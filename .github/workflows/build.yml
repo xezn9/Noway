@@ -1,5 +1,5 @@
 # ضع هذا الملف في المستودع بالمسار:  .github/workflows/build.yml
-# وارفع معه ملف المشروع LiquidGallery.zip في جذر المستودع (نفس المكان الي فيه مجلد .github).
+# وارفع معه ملف المشروع LiquidGlassDemo.zip في جذر المستودع (نفس المكان الي فيه مجلد .github).
 # الـ workflow يفك الضغط داخل GitHub ويبني APK تلقائياً.
 
 name: Build APK
@@ -24,7 +24,7 @@ jobs:
         run: |
           ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1 || true)
           if [ -z "$ZIP" ]; then
-            echo "::error::ما لقيت ملف zip بجذر المستودع. ارفع LiquidGallery.zip هناك."
+            echo "::error::ما لقيت ملف zip بجذر المستودع. ارفع LiquidGlassDemo.zip هناك."
             exit 1
           fi
           echo "Unzipping: $ZIP"
@@ -65,6 +65,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LiquidGallery-debug-apk
+          name: LiquidGlassDemo-debug-apk
           path: ${{ steps.unzip.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
