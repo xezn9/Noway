@@ -1,92 +1,69 @@
-name: Build XopProtector Android APK (JVM 17)
+# ضع هذا الملف في المستودع بالمسار:  .github/workflows/build.yml
+# وارفع معه ملف المشروع LiquidGallery.zip في جذر المستودع (نفس المكان الي فيه مجلد .github).
+# الـ workflow يفك الضغط داخل GitHub ويبني APK تلقائياً.
+
+name: Build APK
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - 'xop-protector-mobile-starter.zip'
-      - '.github/workflows/build-xop-mobile-jvm17.yml'
-
-permissions:
-  contents: read
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 40
 
-      - name: Extract project
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unzip project
+        id: unzip
         shell: bash
         run: |
-          set -euo pipefail
-          test -f xop-protector-mobile-starter.zip
-          DEST="$RUNNER_TEMP/xop-project"
-          mkdir -p "$DEST"
-          unzip -q -o xop-protector-mobile-starter.zip -d "$DEST"
-          SETTINGS_FILE="$(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
-          test -n "$SETTINGS_FILE"
-          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Detected project: $PROJECT_DIR"
-          find "$PROJECT_DIR" -maxdepth 4 -type f -name 'build.gradle*' -print
+          ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1 || true)
+          if [ -z "$ZIP" ]; then
+            echo "::error::ما لقيت ملف zip بجذر المستودع. ارفع LiquidGallery.zip هناك."
+            exit 1
+          fi
+          echo "Unzipping: $ZIP"
+          rm -rf _project
+          mkdir -p _project
+          unzip -q -o "$ZIP" -d _project
 
-      - uses: actions/setup-java@v4
+          # حدّد مجلد المشروع (الي فيه settings.gradle.kts) سواء كان بالجذر أو داخل مجلد
+          SETTINGS=$(find _project -maxdepth 3 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::ما لقيت settings.gradle(.kts) داخل الـ zip."
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          echo "Project dir: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: 8.13
+          build-root-directory: ${{ steps.unzip.outputs.dir }}
 
-      - name: Align Java and Kotlin targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - "$PROJECT_DIR" <<'PY'
-          from pathlib import Path
-          import re, sys
+      - name: Build debug APK
+        working-directory: ${{ steps.unzip.outputs.dir }}
+        run: gradle assembleDebug --stacktrace
 
-          root = Path(sys.argv[1])
-          app = root / "app" / "build.gradle.kts"
-          if not app.exists():
-              candidates = list(root.rglob("build.gradle.kts"))
-              raise SystemExit(f"Missing {app}; found: {candidates}")
-
-          s = app.read_text()
-          java_block = """compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }"""
-          if re.search(r"compileOptions\s*\{[^{}]*\}", s, re.S):
-              s = re.sub(r"compileOptions\s*\{[^{}]*\}", java_block, s, count=1, flags=re.S)
-          else:
-              m = re.search(r"\bandroid\s*\{", s)
-              if not m:
-                  raise SystemExit("No android { block in app/build.gradle.kts")
-              s = s[:m.end()] + "\n    " + java_block + s[m.end():]
-
-          kotlin_block = 'kotlinOptions { jvmTarget = "17" }'
-          if re.search(r"kotlinOptions\s*\{[^{}]*\}", s, re.S):
-              s = re.sub(r"kotlinOptions\s*\{[^{}]*\}", kotlin_block, s, count=1, flags=re.S)
-          else:
-              m = re.search(r"\bandroid\s*\{", s)
-              if not m:
-                  raise SystemExit("No android { block for Kotlin JVM target")
-              s = s[:m.end()] + "\n    " + kotlin_block + "\n" + s[m.end():]
-
-          app.write_text(s)
-          print("Updated", app)
-          print(s)
-          PY
-
-      - name: Build APK
-        run: gradle --no-daemon -p "$PROJECT_DIR" clean assembleDebug
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: xop-protector-mobile-debug-apk
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          name: LiquidGallery-debug-apk
+          path: ${{ steps.unzip.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
