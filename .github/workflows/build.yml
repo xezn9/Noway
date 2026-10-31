@@ -1,46 +1,43 @@
-# ضع هذا الملف في المستودع بالمسار:  .github/workflows/build.yml
-# وارفع معه ملف المشروع LiquidGlassDemo.zip في جذر المستودع (نفس المكان الي فيه مجلد .github).
-# الـ workflow يفك الضغط داخل GitHub ويبني APK تلقائياً.
+name: Build APK from ZIP
 
-name: Build APK
+# Usage:
+#   1. Put this file in your repo at:  .github/workflows/build.yml
+#   2. Upload ImageToVector.zip (or any .zip of the project) to the repo root.
+#   3. Push -> Actions tab -> download the APK from "Artifacts".
 
 on:
   push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unzip project
-        id: unzip
-        shell: bash
+      - name: Unzip the project
         run: |
+          set -e
           ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1 || true)
           if [ -z "$ZIP" ]; then
-            echo "::error::ما لقيت ملف zip بجذر المستودع. ارفع LiquidGlassDemo.zip هناك."
+            echo "::error::No .zip file found in the repo root. Upload ImageToVector.zip next to .github/"
             exit 1
           fi
-          echo "Unzipping: $ZIP"
-          rm -rf _project
-          mkdir -p _project
-          unzip -q -o "$ZIP" -d _project
-
-          # حدّد مجلد المشروع (الي فيه settings.gradle.kts) سواء كان بالجذر أو داخل مجلد
-          SETTINGS=$(find _project -maxdepth 3 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          echo "Using $ZIP"
+          rm -rf _build
+          mkdir _build
+          unzip -q -o "$ZIP" -d _build
+          # find the folder that really contains the Gradle project (handles zips with a wrapper folder)
+          SETTINGS=$(find _build -maxdepth 3 -name settings.gradle.kts -not -path "*/node_modules/*" | head -n 1)
           if [ -z "$SETTINGS" ]; then
-            echo "::error::ما لقيت settings.gradle(.kts) داخل الـ zip."
+            echo "::error::settings.gradle.kts not found inside the zip"
             exit 1
           fi
-          DIR=$(dirname "$SETTINGS")
-          echo "Project dir: $DIR"
-          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -49,22 +46,26 @@ jobs:
           java-version: 17
 
       - name: Accept Android SDK licenses
-        shell: bash
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 9.4.1
-          build-root-directory: ${{ steps.unzip.outputs.dir }}
+          gradle-version: 8.11.1
 
       - name: Build debug APK
-        working-directory: ${{ steps.unzip.outputs.dir }}
-        run: gradle assembleDebug --stacktrace
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp "$PROJECT_DIR"/app/build/outputs/apk/debug/*.apk out/
+          ls -la out
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LiquidGlassDemo-debug-apk
-          path: ${{ steps.unzip.outputs.dir }}/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          name: ImageToVector-apk
+          path: out/*.apk
