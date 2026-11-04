@@ -3,50 +3,42 @@ name: Build APK
 on:
   push:
     branches: [ main, master ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unzip the project
-        run: |
-          ZIP=$(ls *.zip | head -n1)
-          echo "Found: $ZIP"
-          unzip -q "$ZIP" -d _project
-          SETTINGS=$(find _project -maxdepth 3 -name settings.gradle.kts | head -n1)
-          echo "PROJ_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
-
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: 17
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      # المشروع بلا Gradle Wrapper، لذلك نثبّت Gradle مباشرة (AGP 8.11.1 يتطلب 8.13 فأعلى)
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: "8.13"
 
       - name: Build debug APK
-        working-directory: ${{ env.PROJ_DIR }}
-        run: |
-          set +e
-          gradle assembleDebug --stacktrace --console=plain 2>&1 | tee build.log
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" != "0" ]; then
-            echo "=================== REAL ERROR ==================="
-            grep -n -A12 -E "AAR metadata|Dependency '|What went wrong|^e: " build.log | head -n 80
-            echo "=================================================="
-          fi
-          exit $CODE
-        shell: bash
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GlassArchiver-debug-apk
-          path: ${{ env.PROJ_DIR }}/app/build/outputs/apk/debug/*.apk
+          name: PdfGlass-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
