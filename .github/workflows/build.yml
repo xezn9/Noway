@@ -21,11 +21,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      # runner ubuntu-latest يحوي Android SDK جاهزاً (ANDROID_HOME)؛ نكتفي بقبول التراخيص
+      # ويحمّل AGP أي حزمة ناقصة تلقائياً. الخطوة متسامحة مع الأخطاء عمداً.
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       # المشروع بلا Gradle Wrapper، لذلك نثبّت Gradle مباشرة (AGP 8.11.1 يتطلب 8.13 فأعلى)
       - name: Set up Gradle
