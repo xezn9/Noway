@@ -1,0 +1,94 @@
+# ملف مُولَّد تلقائياً بواسطة ApkBuilder (Android (Gradle)) — يُستبدل عند كل بناء، لا تعدّله يدوياً.
+name: ApkBuilder
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 'تنزيل الكود'
+        uses: actions/checkout@v4
+      - name: 'فك ضغط المشروع'
+        run: |
+          python3 - <<'PY'
+          import glob, io, os, shutil, zipfile
+          
+          S = '.apkbuilder'
+          DEST = 'project'
+          parts = sorted(glob.glob(S + '/base/part-*'))
+          if not parts:
+              raise SystemExit('لم أجد أجزاء المشروع في .apkbuilder/base')
+          blob = io.BytesIO()
+          for p in parts:
+              with open(p, 'rb') as f:
+                  blob.write(f.read())
+          shutil.rmtree(DEST, ignore_errors=True)
+          os.makedirs(DEST)
+          with zipfile.ZipFile(blob) as z:
+              z.extractall(DEST)
+          base_files = sum(len(fs) for _, _, fs in os.walk(DEST))
+          
+          ov = S + '/overlay'
+          changed = 0
+          if os.path.isdir(ov):
+              for root, _, names in os.walk(ov):
+                  for n in names:
+                      src = os.path.join(root, n)
+                      out = os.path.join(DEST, os.path.relpath(src, ov))
+                      os.makedirs(os.path.dirname(out), exist_ok=True)
+                      shutil.copyfile(src, out)
+                      changed += 1
+          
+          removed = 0
+          dl = S + '/state/deleted.txt'
+          if os.path.isfile(dl):
+              with open(dl, encoding='utf-8') as f:
+                  for line in f.read().split('\n'):
+                      rel = line.rstrip('\r')
+                      if rel and '..' not in rel.split('/'):
+                          target = os.path.join(DEST, rel)
+                          if os.path.isfile(target):
+                              os.remove(target)
+                              removed += 1
+          
+          for root, _, names in os.walk(DEST):
+              for n in names:
+                  if n == 'gradlew' or n.endswith('.sh'):
+                      os.chmod(os.path.join(root, n), 0o755)
+          print('تم فك المشروع: %d ملف أساسي + %d معدّل - %d محذوف' % (base_files, changed, removed))
+          PY
+      - name: 'إعداد Java 17'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: 'تجهيز Android SDK'
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          LIC='\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n'
+          sudo mkdir -p "$SDK/licenses"
+          printf "$LIC" | sudo tee "$SDK/licenses/android-sdk-license" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - name: 'إعداد Gradle'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: 'بناء APK'
+        working-directory: 'project/'
+        run: |
+          if [ -f gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+      - name: 'رفع ملف APK'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'apk'
+          path: 'project//**/build/outputs/apk/**/*.apk'
+          if-no-files-found: 'error'
+          compression-level: '0'
+          retention-days: '1'
