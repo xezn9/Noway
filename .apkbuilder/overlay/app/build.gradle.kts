@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.glassvolume"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.example.glassvolume"
         minSdk = 26
@@ -22,7 +22,7 @@ android {
 }
 
 dependencies {
-    // مكتبة الـ backdrop 2.0.0 (2.0.1 تتطلب compileSdk 37 و AGP 9.1 اللي ما يدعمها Gradle 8.13)
+    // backdrop 2.0.0 تتطلب compileSdk 37 (تحذير AGP مكتوم من gradle.properties)
     implementation("io.github.kyant0:backdrop:2.0.0")
 
     implementation(platform("androidx.compose:compose-bom:2025.12.00"))
