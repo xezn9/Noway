@@ -90,6 +90,8 @@ class VolumeAccessibilityService : AccessibilityService() {
         createOverlay()
         AlwaysOn.startKeepAlive(this)
         registerScreenReceiver()
+        // إذا المستخدم فعّلها من زر التطبيق: نرجّعه للتطبيق بدل ما يضل بالإعدادات
+        handler.postDelayed({ AlwaysOn.returnToAppIfWaiting(this) }, 400L)
     }
 
     private fun registerScreenReceiver() {

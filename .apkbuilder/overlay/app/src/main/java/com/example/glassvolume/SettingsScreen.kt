@@ -268,50 +268,38 @@ private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun HomePage(backdrop: Backdrop, dark: Boolean) {
-    val ctx = LocalContext.current
     val ink = inkColor(dark)
     PageColumn {
         Text("Glass Volume", color = ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        SetupCard(backdrop, dark)
         GlassCard(backdrop, dark) {
-            Text(
-                "1) فعّل خدمة «Glass Volume» من إعدادات الوصول. إذا النظام منعها: معلومات التطبيق ← ⋮ ← السماح بالإعدادات المقيّدة.",
-                color = ink, fontSize = 15.sp,
-            )
-            LiquidButton(
-                onClick = { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                backdrop = backdrop,
-                tint = AccentBlue,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("فتح إعدادات الوصول", color = Color.White, fontWeight = FontWeight.Medium) }
-        }
-        GlassCard(backdrop, dark) {
-            Text("2) فعّل صلاحية «عدم الإزعاج» حتى يشتغل وضع الصامت.", color = ink, fontSize = 15.sp)
-            LiquidButton(
-                onClick = { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) },
-                backdrop = backdrop,
-                tint = AccentBlue,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("فتح صلاحية عدم الإزعاج", color = Color.White, fontWeight = FontWeight.Medium) }
-        }
-        GlassCard(backdrop, dark) {
-            Text("3) اضغط زر الصوت الفيزيائي وراح تطلع اللوحة.", color = ink, fontSize = 15.sp)
+            Text("اضغط زر الصوت الفيزيائي وراح تطلع اللوحة.", color = ink, fontSize = 15.sp)
             Text(
                 "تغييراتك بتبويب «الزجاج» و«الألوان» تنطبق على اللوحة بالضغطة الجاية.",
                 color = ink.copy(alpha = 0.65f), fontSize = 13.sp,
             )
         }
-        AlwaysOnCard(backdrop, dark)
     }
 }
 
-/* ───────────── يشتغل دائماً ───────────── */
+/* ───────────── الإعداد: زر واحد يكمل الخطوة الجاية ───────────── */
+
+private enum class SetupStep(val label: String, val button: String, val hint: String?) {
+    Notifications("الإشعارات", "السماح بالإشعارات", null),
+    Battery("العمل بالخلفية دائماً", "السماح بالعمل بالخلفية", null),
+    Accessibility(
+        "خدمة الوصول", "تفعيل الخدمة",
+        "راح تنفتح صفحة الخدمة: شغّل المفتاح واضغط «سماح»، وبعدها يرجعك التطبيق لحاله. إذا المفتاح رمادي: معلومات التطبيق ← ⋮ ← السماح بالإعدادات المقيّدة.",
+    ),
+    Dnd("عدم الإزعاج (للوضع الصامت)", "تفعيل عدم الإزعاج", "راح تنفتح صفحة التطبيق: شغّل المفتاح وارجع."),
+}
 
 @Composable
 private fun StatusRow(label: String, ok: Boolean, ink: Color) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = ink, fontSize = 15.sp, modifier = Modifier.weight(1f))
         Text(
-            if (ok) "✓ مفعّل" else "✗ غير مفعّل",
+            if (ok) "✓ تم" else "✗ ناقص",
             color = if (ok) Color(0xFF22A06B) else Color(0xFFE5484D),
             fontSize = 14.sp, fontWeight = FontWeight.Medium,
         )
@@ -319,10 +307,10 @@ private fun StatusRow(label: String, ok: Boolean, ink: Color) {
 }
 
 @Composable
-private fun AlwaysOnCard(backdrop: Backdrop, dark: Boolean) {
+private fun SetupCard(backdrop: Backdrop, dark: Boolean) {
     val ctx = LocalContext.current
     val ink = inkColor(dark)
-    // نعيد قراءة الحالات كل ما ترجع للتطبيق من شاشة إعدادات
+    // نعيد قراءة الحالات كل ما ترجع للتطبيق
     var tick by remember { mutableIntStateOf(0) }
     val activity = ctx as? ComponentActivity
     DisposableEffect(activity) {
@@ -332,49 +320,43 @@ private fun AlwaysOnCard(backdrop: Backdrop, dark: Boolean) {
     }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
 
-    val serviceOn = remember(tick) { AlwaysOn.isServiceEnabled(ctx) }
-    val batteryOk = remember(tick) { AlwaysOn.isIgnoringBattery(ctx) }
-    val notifOk = remember(tick) { AlwaysOn.hasNotificationPermission(ctx) }
-    val autoEnableOk = remember(tick) { AlwaysOn.canWriteSecure(ctx) }
+    val done = remember(tick) {
+        mapOf(
+            SetupStep.Notifications to AlwaysOn.hasNotificationPermission(ctx),
+            SetupStep.Battery to AlwaysOn.isIgnoringBattery(ctx),
+            SetupStep.Accessibility to AlwaysOn.isServiceEnabled(ctx),
+            SetupStep.Dnd to AlwaysOn.hasDndAccess(ctx),
+        )
+    }
+    val next = SetupStep.entries.firstOrNull { done[it] != true }
 
     GlassCard(backdrop, dark) {
-        Text("4) خله يشتغل دائماً", color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        StatusRow("خدمة الوصول", serviceOn, ink)
-        StatusRow("إعفاء من توفير البطارية", batteryOk, ink)
-        StatusRow("الإشعار الثابت (يمنع قتل الخدمة)", notifOk, ink)
-        StatusRow("تفعيل الخدمة تلقائياً بعد إعادة التشغيل", autoEnableOk, ink)
+        Text("الإعداد", color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        SetupStep.entries.forEach { StatusRow(it.label, done[it] == true, ink) }
 
-        if (!batteryOk) {
+        if (next == null) {
+            Text("كل شي جاهز، التطبيق راح يشتغل دائماً حتى بعد إعادة تشغيل الجهاز.",
+                color = ink.copy(alpha = 0.75f), fontSize = 14.sp)
+        } else {
             LiquidButton(
-                onClick = { AlwaysOn.requestIgnoreBattery(ctx) },
+                onClick = {
+                    when (next) {
+                        // هذي تطلع نافذة سماح مباشرة (بدون إعدادات)
+                        SetupStep.Notifications ->
+                            if (Build.VERSION.SDK_INT >= 33) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        SetupStep.Battery -> AlwaysOn.requestIgnoreBattery(ctx)
+                        // هذي أندرويد يمنع أي تطبيق يمنحها لنفسه: نفتح صفحتها بالضبط (مفتاح واحد)
+                        SetupStep.Accessibility -> AlwaysOn.openAccessibilityPage(ctx)
+                        SetupStep.Dnd -> AlwaysOn.openDndPage(ctx)
+                    }
+                },
                 backdrop = backdrop,
                 tint = AccentBlue,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("إعفاء من توفير البطارية", color = Color.White, fontWeight = FontWeight.Medium) }
-        }
-        if (!notifOk && Build.VERSION.SDK_INT >= 33) {
-            LiquidButton(
-                onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                backdrop = backdrop,
-                tint = AccentBlue,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("السماح بالإشعارات", color = Color.White, fontWeight = FontWeight.Medium) }
-        }
-        LiquidButton(
-            onClick = { AlwaysOn.openAutoStartSettings(ctx) },
-            backdrop = backdrop,
-            tint = AccentBlue,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("فتح التشغيل التلقائي", color = Color.White, fontWeight = FontWeight.Medium) }
-        Text(
-            "فعّل «التشغيل التلقائي / Auto-start» وخلّي البطارية «بدون قيود»، وثبّت التطبيق (قفل) بقائمة التطبيقات الأخيرة حتى ما ينقتل.",
-            color = ink.copy(alpha = 0.65f), fontSize = 13.sp,
-        )
-        if (!autoEnableOk) {
-            Text(
-                "اختياري: حتى ترجع الخدمة تشتغل لحالها بعد إعادة التشغيل أو التحديث بدون ما تفعّلها يدوي، شغّل هذا الأمر مرة وحدة من الكمبيوتر والجهاز موصول:\n${AlwaysOn.ADB_GRANT_CMD}",
-                color = ink.copy(alpha = 0.65f), fontSize = 12.sp,
-            )
+            ) { Text(next.button, color = Color.White, fontWeight = FontWeight.Medium) }
+            next.hint?.let {
+                Text(it, color = ink.copy(alpha = 0.65f), fontSize = 13.sp)
+            }
         }
     }
 }

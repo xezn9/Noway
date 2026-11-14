@@ -6,7 +6,8 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
@@ -99,6 +100,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -116,8 +118,9 @@ import kotlin.math.sin
 /** مدة أنيميشن الخروج قبل ما نخفي النافذة */
 private const val EXIT_MS = 380L
 
-/** أقل مدة لتلاشي الشريط الرفيع (حتى لو سرعة الإغلاق بالإعدادات أسرع) */
-private const val THIN_EXIT_MIN_MS = 320
+/** أقل مدة لتلاشي الشريط الرفيع / باقي اللوحة (حتى لو سرعة الإغلاق بالإعدادات أسرع) حتى يبين الأنيميشن */
+private const val THIN_EXIT_MIN_MS = 450
+private const val CARD_EXIT_MIN_MS = 320
 
 /* ───────────── الزجاج ─────────────
    - عدسة + تغبيش خفيف من المكتبة
@@ -320,46 +323,43 @@ private fun SpeakerIcon(level: Float, tint: Color, modifier: Modifier = Modifier
 /* ───────────── ظهور متتابع بنابض ─────────────
    دخول: نابض فيه ارتداد خفيف (مثل iOS) / خروج: نابض متخامد بدون ارتداد */
 
+private enum class PopMode { Thin, Card }
+
 @Composable
 private fun PopIn(
-    visible: Boolean, enterDelay: Int, exitDelay: Int, closeMs: Int,
+    visible: Boolean, enterDelay: Int, closeMs: Int,
     modifier: Modifier = Modifier,
-    /** الشريط الرفيع: خروج ناعم (تلاشي + انزلاق خفيف) بدل نابض سريع، لأنه ملتصق بحافة الشاشة وأي انزلاق كبير يطلّعه برّا بأول إطار */
-    gentleExit: Boolean = false,
+    mode: PopMode = PopMode.Card,
     content: @Composable () -> Unit,
 ) {
-    // سرعة الخروج: نقيس على 380ms (الافتراضي). المدة أقصر = نابض أقوى وتأخير أقل، والعكس
-    val k = closeMs / 380f
+    val modeNow by rememberUpdatedState(mode)
     val p = remember { Animatable(0f) }
-    val gentleNow by rememberUpdatedState(gentleExit)
-    var gentleActive by remember { mutableStateOf(false) }
+    var thin by remember { mutableStateOf(mode == PopMode.Thin) }
     LaunchedEffect(visible) {
+        thin = modeNow == PopMode.Thin
         if (visible) {
-            gentleActive = false
             if (enterDelay > 0) delay(enterDelay.toLong())
-            p.animateTo(1f, spring(0.68f, 300f))
-        } else if (gentleNow) {
-            gentleActive = true
-            p.animateTo(0f, tween(maxOf(closeMs, THIN_EXIT_MIN_MS), easing = FastOutSlowInEasing))
+            // الشريط الرفيع: ظهور ناعم بدون ارتداد. الباقي: نابض خفيف
+            if (thin) p.animateTo(1f, tween(220, easing = LinearOutSlowInEasing))
+            else p.animateTo(1f, spring(0.82f, 380f))
         } else {
-            gentleActive = false
-            if (exitDelay > 0) delay((exitDelay * k).toLong())
-            p.animateTo(0f, spring(1f, (700f / (k * k)).coerceIn(15f, 20000f)))
+            // خروج: منحنى متناظر (يبدأ ببطء وينتهي ببطء) وتلاشي خطي حتى يبين بوضوح
+            val ms = if (thin) maxOf(closeMs, THIN_EXIT_MIN_MS) else maxOf(closeMs, CARD_EXIT_MIN_MS)
+            p.animateTo(0f, tween(ms, easing = CubicBezierEasing(0.4f, 0f, 0.6f, 1f)))
         }
     }
     Box(
         modifier.graphicsLayer {
             val v = p.value
-            if (gentleActive) {
-                val s = 0.9f + 0.1f * v
-                scaleX = s; scaleY = s
-                translationX = (1f - v) * 10.dp.toPx()
+            if (thin) {
+                // الشريط الرفيع: تلاشي + يتقلّص طولياً شوي (بدون انزلاق، لأنه ملتصق بحافة الشاشة)
+                scaleY = 0.85f + 0.15f * v
                 alpha = v.coerceIn(0f, 1f)
             } else {
-                val s = 0.55f + 0.45f * v
-                scaleX = s; scaleY = s
-                translationX = (1f - v) * 56.dp.toPx()
-                alpha = (v * 1.6f).coerceIn(0f, 1f)
+                val sc = 0.9f + 0.1f * v
+                scaleX = sc; scaleY = sc
+                translationX = (1f - v) * 28.dp.toPx()
+                alpha = (if (visible) v * 1.6f else v).coerceIn(0f, 1f)
             }
             transformOrigin = TransformOrigin(1f, 0.5f)
         }
@@ -410,9 +410,8 @@ fun VolumeOverlay(
         onTouchable(false)   // بدأ الإغلاق: اللمس يمر للتطبيق اللي تحت
         hiding = true
         // مدة الأنيميشن من سلايدر التطبيق (الشريط الرفيع له حد أدنى حتى يبين تلاشيه)
-        val thinNow = !expanded && !grabbed
-        val closeMs = if (thinNow) maxOf(ctrl.closeDurationMs(), THIN_EXIT_MIN_MS) else ctrl.closeDurationMs()
-        delay(closeMs.toLong() + 40L)
+        val minMs = if (!expanded && !grabbed) THIN_EXIT_MIN_MS else CARD_EXIT_MIN_MS
+        delay(maxOf(ctrl.closeDurationMs(), minMs).toLong() + 40L)
         expanded = false; grabbed = false; forceClose = false; swipeRaw = 0f; swipeX = 0f
         onClosed()
     }
@@ -533,17 +532,17 @@ fun VolumeOverlay(
             ) {
                 AnimatedContent(
                     targetState = expanded,
+                    contentAlignment = Alignment.CenterEnd,
                     transitionSpec = {
-                        val origin = TransformOrigin(1f, 0.5f)
-                        (fadeIn(tween(240)) +
-                            scaleIn(spring(0.72f, 300f), initialScale = 0.55f, transformOrigin = origin)) togetherWith
-                            (fadeOut(tween(140)) +
-                                scaleOut(spring(1f, 520f), targetScale = 0.55f, transformOrigin = origin)) using
-                            SizeTransform(clip = false)
+                        // تبديل ناعم: القديم يتلاشى بسرعة، والجديد يدخل بعده بشوية (والحركة/الحجم يسوّيها PopIn والنابض)
+                        fadeIn(tween(220, delayMillis = 70)) togetherWith fadeOut(tween(110)) using
+                            SizeTransform(clip = false) { _, _ ->
+                                spring(0.86f, 420f, visibilityThreshold = IntSize.VisibilityThreshold)
+                            }
                     },
                     label = "morph",
                 ) { isExpanded ->
-                    if (isExpanded) PopIn(visible, 0, 0, ctrl.closeDurationMs()) { ExpandedCard(backdrop, ctrl) }
+                    if (isExpanded) PopIn(visible, 0, ctrl.closeDurationMs()) { ExpandedCard(backdrop, ctrl) }
                     else CollapsedColumn(
                         backdrop, ctrl, visible,
                         grabbed = grabbed,
@@ -573,17 +572,14 @@ private fun CollapsedColumn(
     val level = ctrl.levels[stream] ?: 0f
     val st = LocalGlassStyle.current
 
-    // أثناء السحب: السلايدر «يلتصق» بزر الرنين عن طريق جسر سائل بينهم
-    val joinState = animateFloatAsState(if (ctrl.dragging) 1f else 0f, spring(0.5f, 340f), label = "join")
-
     // 0 = رفيع (مثل ايفون)، 1 = الحجم الطبيعي
     val expand by animateFloatAsState(if (grabbed) 1f else 0f, spring(0.64f, 360f), label = "expand")
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         PopIn(
-            visible, 0, 90, ctrl.closeDurationMs(),
+            visible, 0, ctrl.closeDurationMs(),
             Modifier.onGloballyPositioned { onSliderBounds(it.boundsInWindow()) },
-            gentleExit = !grabbed,
+            mode = if (grabbed) PopMode.Card else PopMode.Thin,
         ) {
             GlassSlider(
                 backdrop, level,
@@ -592,122 +588,25 @@ private fun CollapsedColumn(
                 width = 60.dp, height = 180.dp,
                 kick = ctrl.edgeKick, kickDir = ctrl.edgeDir,
                 icon = { tint -> SpeakerIcon(level, tint, Modifier.fillMaxSize()) },
-                joinBottom = { joinState.value },
                 expand = expand,
                 onGrab = onGrab,
             )
         }
-        StickyBridge(gap = 12.dp, width = 60.dp, color = st.rimColor, join = { joinState.value })
+        Spacer(Modifier.height(12.dp))
         // الأزرار تنحجز مكانها دائماً (حتى الشريط ما يتحرك) وتظهر بس بعد ما يتكبّر الشريط
         Box(Modifier.size(52.dp)) {
-            if (grabbed) PopIn(visible, 45, 45, ctrl.closeDurationMs()) {
-                // الزر ينسحب شوية باتجاه السلايدر وقت الالتصاق
-                Box(Modifier.graphicsLayer { translationY = -3.dp.toPx() * joinState.value }) {
-                    RingerButton(backdrop, ctrl.ringer, joinTop = { joinState.value }) { ctrl.cycleRinger() }
-                }
+            if (grabbed) PopIn(visible, 45, ctrl.closeDurationMs()) {
+                RingerButton(backdrop, ctrl.ringer) { ctrl.cycleRinger() }
             }
         }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.size(52.dp)) {
-            if (grabbed) PopIn(visible, 90, 0, ctrl.closeDurationMs()) {
+            if (grabbed) PopIn(visible, 90, ctrl.closeDurationMs()) {
                 GlassButton(backdrop, onClick = onMore) {
                     Icon(Icons.Rounded.MoreHoriz, null, tint = st.btnIcon, modifier = Modifier.size(24.dp))
                 }
             }
         }
-    }
-}
-
-/* ───────────── الجسر السائل ─────────────
-   يرسم «رقبة» زجاجية منحنية بين السلايدر وزر الرنين (مثل التحام قطرتين).
-   الأطراف تتلاشى بنعومة حتى تذوب داخل الشكلين، والوسط يسمك مع السحب. */
-
-private val BRIDGE_OVERLAP = 14.dp
-private const val BTN_RADIUS_DP = 26f   // نصف قطر زر الرنين (الزر 52dp)
-
-@Composable
-private fun StickyBridge(gap: Dp, width: Dp, color: Color, join: () -> Float) {
-    Box(Modifier.size(width, gap), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .requiredSize(width + 24.dp, gap + BRIDGE_OVERLAP * 2)
-                .drawBehind {
-                    val j = join().coerceIn(0f, 1f)
-                    if (j <= 0.01f) return@drawBehind
-                    val ov = BRIDGE_OVERLAP.toPx()
-                    val cx = size.width / 2f
-                    // حافة السلايدر السفلية (بعد ما يكبر وقت اللمس) وحافة الزر العلوية (بعد ما ينسحب)
-                    val yS = ov + 4.5.dp.toPx() * j
-                    val yR = ov + gap.toPx() - 3.dp.toPx() * j
-
-                    // قوس السلايدر السفلي (قطع ناقص لأنه يتمدد أفقياً أكثر) وقوس الزر (دائرة)
-                    val rx1 = width.toPx() / 2f * (1f + 0.15f * j)
-                    val ry1 = width.toPx() / 2f * (1f + 0.05f * j)
-                    val c1y = yS - ry1
-                    val r2 = BTN_RADIUS_DP.dp.toPx()
-                    val c2y = yR + r2
-
-                    // الرقبة السائلة: منحنى مماسّ للشكلين من الجهتين (مثل التحام قطرتين).
-                    // الزاوية تكبر مع j فتتسع نقطة الالتحام وتسمك الرقبة بسلاسة
-                    val ang = Math.toRadians((14.0 + 32.0 * j)).toFloat()
-                    val sn = sin(ang)
-                    val cs = cos(ang)
-
-                    // يرجع (نقطة على السلايدر، تحكم1، تحكم2، نقطة على الزر) للجهة sg (+1 يمين، -1 يسار)
-                    fun side(sg: Float): List<Offset> {
-                        val p = Offset(cx + sg * rx1 * sn, c1y + ry1 * cs)
-                        val q = Offset(cx + sg * r2 * sn, c2y - r2 * cs)
-                        // اتجاه المماس عند السلايدر (نازل للداخل) وعند الزر (نازل للخارج)
-                        val tx = -sg * rx1 * cs
-                        val ty = ry1 * sn
-                        val tl = kotlin.math.sqrt(tx * tx + ty * ty)
-                        val k = (q - p).getDistance() * 0.42f
-                        val c1 = Offset(p.x + tx / tl * k, p.y + ty / tl * k)
-                        val c2 = Offset(q.x - sg * cs * k, q.y - sn * k)
-                        return listOf(p, c1, c2, q)
-                    }
-                    val r = side(1f)
-                    val l = side(-1f)
-
-                    val fill = Path().apply {
-                        moveTo(l[0].x, l[0].y)
-                        cubicTo(l[1].x, l[1].y, l[2].x, l[2].y, l[3].x, l[3].y)
-                        lineTo(r[3].x, r[3].y)
-                        cubicTo(r[2].x, r[2].y, r[1].x, r[1].y, r[0].x, r[0].y)
-                        close()
-                    }
-                    // نقص الشكلين من الجسر حتى ما يتكرر لون الزجاج داخلهم (يتداخل 0.75dp للتغطية)
-                    val inset = 0.75.dp.toPx()
-                    val e1 = Path().apply {
-                        addOval(Rect(cx - rx1 + inset, c1y - ry1 + inset, cx + rx1 - inset, c1y + ry1 - inset))
-                    }
-                    val e2 = Path().apply {
-                        addOval(Rect(cx - r2 + inset, c2y - r2 + inset, cx + r2 - inset, c2y + r2 - inset))
-                    }
-                    clipPath(e1, ClipOp.Difference) {
-                        clipPath(e2, ClipOp.Difference) {
-                            drawPath(fill, color.mulAlpha(0.07f * j))
-                        }
-                    }
-
-                    // حافة لامعة على المنحنيين فقط، وتتلاشى عند أطرافهم حتى تذوب بحواف الشكلين
-                    val rim = Brush.verticalGradient(
-                        0f to color.mulAlpha(0f),
-                        0.22f to color.mulAlpha(0.55f * j),
-                        0.78f to color.mulAlpha(0.55f * j),
-                        1f to color.mulAlpha(0f),
-                        startY = r[0].y,
-                        endY = r[3].y,
-                    )
-                    listOf(r, l).forEach { pts ->
-                        val edge = Path().apply {
-                            moveTo(pts[0].x, pts[0].y)
-                            cubicTo(pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
-                        }
-                        drawPath(edge, rim, style = Stroke(width = 1.4.dp.toPx(), cap = StrokeCap.Round))
-                    }
-                }
-        )
     }
 }
 

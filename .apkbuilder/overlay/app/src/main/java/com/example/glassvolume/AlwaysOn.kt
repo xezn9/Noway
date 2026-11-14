@@ -63,6 +63,67 @@ object AlwaysOn {
         }
     }
 
+    /** يفتح صفحة خدمتنا مباشرة (فيها مفتاح واحد) بدل قائمة كل الخدمات. القديم يفتح القائمة العامة */
+    fun openAccessibilityPage(ctx: Context) {
+        markReturn(ctx)
+        val flat = serviceComponent(ctx).flattenToString()
+        try {
+            ctx.startActivity(
+                Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                    .putExtra(Intent.EXTRA_COMPONENT_NAME, flat)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            return
+        } catch (_: Throwable) { }
+        try {
+            ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Throwable) { }
+    }
+
+    /* ───────────── عدم الإزعاج ───────────── */
+
+    fun hasDndAccess(ctx: Context): Boolean =
+        ctx.getSystemService(NotificationManager::class.java)?.isNotificationPolicyAccessGranted ?: false
+
+    /** يفتح صفحة تطبيقنا مباشرة (مفتاح واحد) إذا النظام يدعمها */
+    fun openDndPage(ctx: Context) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_DETAIL_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                return
+            } catch (_: Throwable) { }
+        }
+        try {
+            ctx.startActivity(
+                Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Throwable) { }
+    }
+
+    /* ───────────── الرجوع للتطبيق تلقائياً بعد تفعيل خدمة الوصول ───────────── */
+
+    private const val KEY_RETURN = "return_after_setup"
+
+    private fun markReturn(ctx: Context) {
+        ctx.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_RETURN, true).apply()
+    }
+
+    /** الخدمة تنادي هذا أول ما تشتغل: إذا المستخدم جاي من زر التفعيل نرجّعه للتطبيق */
+    fun returnToAppIfWaiting(ctx: Context) {
+        val prefs = ctx.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_RETURN, false)) return
+        prefs.edit().putBoolean(KEY_RETURN, false).apply()
+        try {
+            ctx.startActivity(
+                Intent(ctx, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+        } catch (_: Throwable) { }
+    }
+
     /* ───────────── البطارية ───────────── */
 
     fun isIgnoringBattery(ctx: Context): Boolean =
