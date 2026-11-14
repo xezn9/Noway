@@ -1,7 +1,10 @@
 package com.example.glassvolume
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.graphics.PixelFormat
@@ -74,13 +77,41 @@ class VolumeAccessibilityService : AccessibilityService() {
         if (pendingShow) { capturing = false; showDueAt = 0L; tryReveal() }
     }
 
+    // آخر مرة ظهرت نافذة من تطبيق ثاني (لقطة الشاشة، لوحة النظام...)
+    private var lastForeignWindowAt = 0L
+    private var screenReceiverRegistered = false
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) { stopRepeat() }
+    }
+
     override fun onServiceConnected() {
         wm = getSystemService(WindowManager::class.java)
         ctrl = VolumeController(this)
         createOverlay()
+        AlwaysOn.startKeepAlive(this)
+        registerScreenReceiver()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    private fun registerScreenReceiver() {
+        if (screenReceiverRegistered) return
+        try {
+            val f = IntentFilter(Intent.ACTION_SCREEN_OFF)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, f, Context.RECEIVER_NOT_EXPORTED)
+            else registerReceiver(screenReceiver, f)
+            screenReceiverRegistered = true
+        } catch (_: Throwable) { }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val e = event ?: return
+        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (e.packageName?.toString() == packageName) return
+        // ظهرت نافذة من نظام/تطبيق ثاني (مثلاً واجهة لقطة الشاشة): ما نكمل تكرار الضغط المطوّل
+        // (احتمال ضاع حدث رفع الإصبع)، ونوقف اللقطات الحية شوية حتى ما نثقّل الجهاز وقت اللقطة
+        lastForeignWindowAt = SystemClock.uptimeMillis()
+        if (repeatingUp != null) stopRepeat()
+    }
+
     override fun onInterrupt() { stopRepeat() }
 
     /**
@@ -90,7 +121,11 @@ class VolumeAccessibilityService : AccessibilityService() {
      */
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
-        if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) return false
+        if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) {
+            // أي زر ثاني ينضغط وقت التكرار = غالباً مو ضغط صوت عادي (مثل لقطة الشاشة): نوقف التكرار
+            if (repeatingUp != null) stopRepeat()
+            return false
+        }
         val up = code == KeyEvent.KEYCODE_VOLUME_UP
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
@@ -101,19 +136,20 @@ class VolumeAccessibilityService : AccessibilityService() {
                     startRepeat(up)
                 }
             }
-            KeyEvent.ACTION_UP -> if (repeatingUp == up) stopRepeat()
+            KeyEvent.ACTION_UP -> stopRepeat()   // أي رفع لزر صوت يوقف التكرار (حتى لو الاتجاه ثاني)
         }
         return true
     }
 
     /** ضغطة وحدة: غيّر الصوت + أظهر اللوحة أو جدّد مؤقتها */
-    private fun pressVolume(up: Boolean) {
-        ctrl.adjustMusic(if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER)
+    private fun pressVolume(up: Boolean): Boolean {
+        val changed = ctrl.adjustMusic(if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER)
         when {
             shown -> ctrl.bump()          // اللوحة ظاهرة: بس نجدد المؤقت
             pendingShow -> {}             // بانتظار الظهور
             else -> requestShow(if (up) 0L else downDelayMs())
         }
+        return changed
     }
 
     /* ───────────── تكرار الضغط المطوّل ───────────── */
@@ -122,15 +158,23 @@ class VolumeAccessibilityService : AccessibilityService() {
     private var repeatCount = 0
     private var repeatStartedAt = 0L
 
+    private var repeatExpectedAt = 0L
+
     private val repeatTick = object : Runnable {
         override fun run() {
             val up = repeatingUp ?: return
-            // أمان: إذا ضاع حدث الرفع (مثلاً انطفت الشاشة) لا نكمل للأبد
-            if (SystemClock.uptimeMillis() - repeatStartedAt > REPEAT_MAX_MS) { stopRepeat(); return }
+            val now = SystemClock.uptimeMillis()
+            // أمان 1: إذا ضاع حدث الرفع (مثلاً انطفت الشاشة) لا نكمل للأبد
+            if (now - repeatStartedAt > REPEAT_MAX_MS) { stopRepeat(); return }
+            // أمان 2: إذا الجهاز تعلّق (لاق) والتكرار تأخر كثير عن موعده، غالباً حدث رفع الإصبع ضاع
+            // وسط اللاق (مثلاً وقت لقطة الشاشة) فنوقف بدل ما نكمل نخفض الصوت
+            if (repeatExpectedAt != 0L && now - repeatExpectedAt > REPEAT_STALL_MS) { stopRepeat(); return }
             repeatCount++
-            pressVolume(up)
+            // أمان 3: وصلنا للحد الأعلى/الأدنى؟ ما فيه فايدة نكمل
+            if (!pressVolume(up)) { stopRepeat(); return }
             // يبدأ بطيء وكل تكرار يسرّع لين يوصل أقصى سرعة
             val interval = maxOf(REPEAT_MIN_INTERVAL, REPEAT_START_INTERVAL - repeatCount * 8L)
+            repeatExpectedAt = SystemClock.uptimeMillis() + interval
             handler.postDelayed(this, interval)
         }
     }
@@ -139,11 +183,13 @@ class VolumeAccessibilityService : AccessibilityService() {
         repeatingUp = up
         repeatCount = 0
         repeatStartedAt = SystemClock.uptimeMillis()
+        repeatExpectedAt = repeatStartedAt + REPEAT_INITIAL_DELAY
         handler.postDelayed(repeatTick, REPEAT_INITIAL_DELAY)
     }
 
     private fun stopRepeat() {
         repeatingUp = null
+        repeatExpectedAt = 0L
         handler.removeCallbacks(repeatTick)
     }
 
@@ -233,7 +279,9 @@ class VolumeAccessibilityService : AccessibilityService() {
     private val liveTick = object : Runnable {
         override fun run() {
             if (!liveRunning) return
-            if (!liveBusy) captureLiveFrame()
+            // نوقف اللقطات الحية أثناء الضغط المطوّل وبعد ظهور نافذة نظام (لقطة الشاشة) حتى ما يتعلّق الجهاز
+            val calm = repeatingUp == null && SystemClock.uptimeMillis() - lastForeignWindowAt > FOREIGN_PAUSE_MS
+            if (!liveBusy && calm) captureLiveFrame()
             handler.postDelayed(this, LIVE_INTERVAL_MS)
         }
     }
@@ -426,6 +474,11 @@ class VolumeAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (screenReceiverRegistered) {
+            try { unregisterReceiver(screenReceiver) } catch (_: Throwable) { }
+            screenReceiverRegistered = false
+        }
+        AlwaysOn.stopKeepAlive(this)
         view?.let { try { wm.removeView(it) } catch (_: Exception) { } }
         catcher?.let { try { wm.removeView(it) } catch (_: Exception) { } }
         owner?.destroy()
@@ -441,7 +494,9 @@ class VolumeAccessibilityService : AccessibilityService() {
         const val REPEAT_INITIAL_DELAY = 380L   // قبل ما يبدأ التكرار (قريب من مهلة الضغط المطوّل)
         const val REPEAT_START_INTERVAL = 130L  // أول فاصل بين التكرارات
         const val REPEAT_MIN_INTERVAL = 45L     // أسرع فاصل
-        const val REPEAT_MAX_MS = 15_000L
+        const val REPEAT_MAX_MS = 6_000L
+        const val REPEAT_STALL_MS = 250L        // تأخر التكرار أكثر من هذا = الجهاز معلّق، نوقف
+        const val FOREIGN_PAUSE_MS = 1_800L     // مدة إيقاف اللقطات الحية بعد ظهور نافذة نظام
         const val CATCHER_ON_FLAGS =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or      // اللمس برّا النافذة يروح للتطبيق اللي تحت

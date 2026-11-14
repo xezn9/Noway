@@ -6,6 +6,7 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
@@ -114,6 +115,9 @@ import kotlin.math.sin
 
 /** مدة أنيميشن الخروج قبل ما نخفي النافذة */
 private const val EXIT_MS = 380L
+
+/** أقل مدة لتلاشي الشريط الرفيع (حتى لو سرعة الإغلاق بالإعدادات أسرع) */
+private const val THIN_EXIT_MIN_MS = 320
 
 /* ───────────── الزجاج ─────────────
    - عدسة + تغبيش خفيف من المكتبة
@@ -320,16 +324,25 @@ private fun SpeakerIcon(level: Float, tint: Color, modifier: Modifier = Modifier
 private fun PopIn(
     visible: Boolean, enterDelay: Int, exitDelay: Int, closeMs: Int,
     modifier: Modifier = Modifier,
+    /** الشريط الرفيع: خروج ناعم (تلاشي + انزلاق خفيف) بدل نابض سريع، لأنه ملتصق بحافة الشاشة وأي انزلاق كبير يطلّعه برّا بأول إطار */
+    gentleExit: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // سرعة الخروج: نقيس على 380ms (الافتراضي). المدة أقصر = نابض أقوى وتأخير أقل، والعكس
     val k = closeMs / 380f
     val p = remember { Animatable(0f) }
+    val gentleNow by rememberUpdatedState(gentleExit)
+    var gentleActive by remember { mutableStateOf(false) }
     LaunchedEffect(visible) {
         if (visible) {
+            gentleActive = false
             if (enterDelay > 0) delay(enterDelay.toLong())
             p.animateTo(1f, spring(0.68f, 300f))
+        } else if (gentleNow) {
+            gentleActive = true
+            p.animateTo(0f, tween(maxOf(closeMs, THIN_EXIT_MIN_MS), easing = FastOutSlowInEasing))
         } else {
+            gentleActive = false
             if (exitDelay > 0) delay((exitDelay * k).toLong())
             p.animateTo(0f, spring(1f, (700f / (k * k)).coerceIn(15f, 20000f)))
         }
@@ -337,10 +350,17 @@ private fun PopIn(
     Box(
         modifier.graphicsLayer {
             val v = p.value
-            val s = 0.55f + 0.45f * v
-            scaleX = s; scaleY = s
-            translationX = (1f - v) * 56.dp.toPx()
-            alpha = (v * 1.6f).coerceIn(0f, 1f)
+            if (gentleActive) {
+                val s = 0.9f + 0.1f * v
+                scaleX = s; scaleY = s
+                translationX = (1f - v) * 10.dp.toPx()
+                alpha = v.coerceIn(0f, 1f)
+            } else {
+                val s = 0.55f + 0.45f * v
+                scaleX = s; scaleY = s
+                translationX = (1f - v) * 56.dp.toPx()
+                alpha = (v * 1.6f).coerceIn(0f, 1f)
+            }
             transformOrigin = TransformOrigin(1f, 0.5f)
         }
     ) { content() }
@@ -389,8 +409,10 @@ fun VolumeOverlay(
         if (!forceClose) delay(if (expanded || grabbed) 4000L else 2500L)
         onTouchable(false)   // بدأ الإغلاق: اللمس يمر للتطبيق اللي تحت
         hiding = true
-        // مدة الأنيميشن من سلايدر التطبيق
-        delay(ctrl.closeDurationMs().toLong() + 40L)
+        // مدة الأنيميشن من سلايدر التطبيق (الشريط الرفيع له حد أدنى حتى يبين تلاشيه)
+        val thinNow = !expanded && !grabbed
+        val closeMs = if (thinNow) maxOf(ctrl.closeDurationMs(), THIN_EXIT_MIN_MS) else ctrl.closeDurationMs()
+        delay(closeMs.toLong() + 40L)
         expanded = false; grabbed = false; forceClose = false; swipeRaw = 0f; swipeX = 0f
         onClosed()
     }
@@ -558,7 +580,11 @@ private fun CollapsedColumn(
     val expand by animateFloatAsState(if (grabbed) 1f else 0f, spring(0.64f, 360f), label = "expand")
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        PopIn(visible, 0, 90, ctrl.closeDurationMs(), Modifier.onGloballyPositioned { onSliderBounds(it.boundsInWindow()) }) {
+        PopIn(
+            visible, 0, 90, ctrl.closeDurationMs(),
+            Modifier.onGloballyPositioned { onSliderBounds(it.boundsInWindow()) },
+            gentleExit = !grabbed,
+        ) {
             GlassSlider(
                 backdrop, level,
                 onValueChange = { ctrl.setLevel(stream, it) },
