@@ -340,8 +340,9 @@ private fun PopIn(
         if (visible) {
             if (enterDelay > 0) delay(enterDelay.toLong())
             // الشريط الرفيع: ظهور ناعم بدون ارتداد. الباقي: نابض خفيف
-            if (thin) p.animateTo(1f, tween(220, easing = LinearOutSlowInEasing))
-            else p.animateTo(1f, spring(0.82f, 380f))
+            // مثل iOS: ينزلق من الحافة بنابض ناعم مع ارتداد خفيف جداً
+            if (thin) p.animateTo(1f, spring(0.84f, 300f))
+            else p.animateTo(1f, spring(0.76f, 320f))
         } else {
             // خروج: منحنى متناظر (يبدأ ببطء وينتهي ببطء) وتلاشي خطي حتى يبين بوضوح
             val ms = if (thin) maxOf(closeMs, THIN_EXIT_MIN_MS) else maxOf(closeMs, CARD_EXIT_MIN_MS)
@@ -352,14 +353,17 @@ private fun PopIn(
         modifier.graphicsLayer {
             val v = p.value
             if (thin) {
-                // الشريط الرفيع: تلاشي + يتقلّص طولياً شوي (بدون انزلاق، لأنه ملتصق بحافة الشاشة)
-                scaleY = 0.85f + 0.15f * v
-                alpha = v.coerceIn(0f, 1f)
-            } else {
+                // الشريط الرفيع (مثل iOS): ينزلق من/إلى حافة الشاشة مع تلاشي وتصغير خفيف
                 val sc = 0.9f + 0.1f * v
                 scaleX = sc; scaleY = sc
-                translationX = (1f - v) * 28.dp.toPx()
-                alpha = (if (visible) v * 1.6f else v).coerceIn(0f, 1f)
+                translationX = (1f - v) * 22.dp.toPx()
+                alpha = (if (visible) v * 2f else v).coerceIn(0f, 1f)
+            } else {
+                // القائمة (مثل iOS): تنفتح من مكان الشريط بتكبير من 80% وارتداد خفيف
+                val sc = 0.8f + 0.2f * v
+                scaleX = sc; scaleY = sc
+                translationX = (1f - v) * 22.dp.toPx()
+                alpha = (if (visible) v * 1.8f else v).coerceIn(0f, 1f)
             }
             transformOrigin = TransformOrigin(1f, 0.5f)
         }
