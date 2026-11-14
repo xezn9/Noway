@@ -90,7 +90,7 @@ object AlwaysOn {
         if (Build.VERSION.SDK_INT >= 30) {
             try {
                 ctx.startActivity(
-                    Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_DETAIL_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                    Intent("android.settings.NOTIFICATION_POLICY_ACCESS_DETAIL_SETTINGS", Uri.parse("package:${ctx.packageName}"))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
                 return

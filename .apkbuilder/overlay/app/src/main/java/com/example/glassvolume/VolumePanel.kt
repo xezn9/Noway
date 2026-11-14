@@ -537,7 +537,7 @@ fun VolumeOverlay(
                         // تبديل ناعم: القديم يتلاشى بسرعة، والجديد يدخل بعده بشوية (والحركة/الحجم يسوّيها PopIn والنابض)
                         fadeIn(tween(220, delayMillis = 70)) togetherWith fadeOut(tween(110)) using
                             SizeTransform(clip = false) { _, _ ->
-                                spring(0.86f, 420f, visibilityThreshold = IntSize.VisibilityThreshold)
+                                spring<IntSize>(0.86f, 420f)
                             }
                     },
                     label = "morph",
