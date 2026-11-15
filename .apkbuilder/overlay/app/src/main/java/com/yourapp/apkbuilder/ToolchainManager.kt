@@ -122,23 +122,39 @@ class ToolchainManager(
 
     // ---------- أدوات مساعدة عامة ----------
 
-    private fun downloadWithProgress(url: String, dest: File, progress: (Int) -> Unit) {
-        val conn = URL(url).openConnection()
-        conn.connect()
-        val total = conn.contentLengthLong.takeIf { it > 0 } ?: -1L
-        var read = 0L
-        conn.getInputStream().use { input ->
-            dest.outputStream().use { out ->
-                val buf = ByteArray(1 shl 16)
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    read += n
-                    if (total > 0) progress(((read * 100) / total).toInt())
+    private fun downloadWithProgress(url: String, dest: File, maxRetries: Int = 3, progress: (Int) -> Unit) {
+        var lastError: Exception? = null
+        for (attempt in 1..maxRetries) {
+            try {
+                val conn = URL(url).openConnection()
+                conn.connectTimeout = 15_000
+                conn.readTimeout = 15_000
+                conn.connect()
+                val total = conn.contentLengthLong.takeIf { it > 0 } ?: -1L
+                var read = 0L
+                conn.getInputStream().use { input ->
+                    dest.outputStream().use { out ->
+                        val buf = ByteArray(1 shl 16)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            read += n
+                            if (total > 0) progress(((read * 100) / total).toInt())
+                        }
+                    }
+                }
+                return // نجح
+            } catch (e: Exception) {
+                lastError = e
+                dest.delete()
+                if (attempt < maxRetries) {
+                    onProgress(0, "فشلت محاولة $attempt (${e.javaClass.simpleName}: ${e.message}) — إعادة محاولة...")
+                    Thread.sleep(2000L * attempt) // تأخير متزايد قبل كل إعادة محاولة
                 }
             }
         }
+        throw lastError ?: RuntimeException("فشل التنزيل بدون سبب محدد")
     }
 
     private fun extractZip(zip: File, outDir: File) {
