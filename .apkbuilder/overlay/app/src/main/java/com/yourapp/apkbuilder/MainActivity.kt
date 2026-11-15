@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
         if (autoScroll) scrollToBottom()
     }
 
-    private fun setProgress(pct: Int) = runOnUiThread {
+    private fun updateProgress(pct: Int) = runOnUiThread {
         progress.progress = pct.coerceIn(0, 100)
         tvPercent.text = "$pct%"
     }
@@ -120,7 +120,7 @@ class MainActivity : AppCompatActivity() {
 
                 log("3/6 التحقق من الأدوات المحلية / تنزيل الناقص...", LogLevel.STEP)
                 val toolchain = ToolchainManager(this@MainActivity) { pct, msg ->
-                    setProgress(pct)
+                    updateProgress(pct)
                     log(msg, LogLevel.RAW)
                 }
                 val paths = toolchain.ensureToolchain(req)
