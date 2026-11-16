@@ -3,6 +3,7 @@ package com.yourapp.apkbuilder
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import java.io.File
 
 /**
@@ -43,6 +44,9 @@ object TermuxBuilder {
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
             putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0") // ما يفتح واجهة الطرفية
         }
-        ctx.startService(intent)
+        // لازم startForegroundService على أندرويد 8+، وإلا أندرويد يرفض بدء خدمة تطبيق ثاني (Termux)
+        // وهو ليس بالواجهة الأمامية حالياً ("app is in background"). Termux نفسه يتكفل يرفع
+        // خدمته لـ foreground (يطلع إشعار) خلال ثواني حتى ما تصير ANR.
+        ContextCompat.startForegroundService(ctx, intent)
     }
 }

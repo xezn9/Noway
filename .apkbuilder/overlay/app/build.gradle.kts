@@ -12,26 +12,37 @@ android {
         targetSdk = 34
         // لازم تزيد versionCode بكل إصدار جديد حتى يعتبره أندرويد "تحديث" بدل تطبيق منفصل.
         // versionName بس للعرض للمستخدم، ما يؤثر على منطق التحديث.
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     // لازم تكون كل نسخة موقعة بنفس المفتاح حتى تنصب كتحديث فوق النسخة السابقة.
     // لو وقعت بمفتاح مختلف، أندرويد يرفض التثبيت كتحديث ("INSTALL_FAILED_UPDATE_INCOMPATIBLE").
     signingConfigs {
         create("release") {
-            // القيم تجي من متغيرات بيئة (مثالية لـ GitHub Actions secrets) أو من gradle.properties محلياً.
-            // لو ما كانت موجودة، يرجع لنفس مفتاح debug (يسمح ببناء تجريبي بدون أسرار، لكن ما يصلح للنشر الفعلي).
-            val ksPath = System.getenv("KEYSTORE_PATH") ?: project.findProperty("RELEASE_KEYSTORE_PATH") as String?
-            val ksPass = System.getenv("KEYSTORE_PASSWORD") ?: project.findProperty("RELEASE_KEYSTORE_PASSWORD") as String?
-            val alias = System.getenv("KEY_ALIAS") ?: project.findProperty("RELEASE_KEY_ALIAS") as String?
-            val keyPass = System.getenv("KEY_PASSWORD") ?: project.findProperty("RELEASE_KEY_PASSWORD") as String?
+            // مفتاح ثابت مخصص لهذا التطبيق (keystore/apkbuilder-release.jks) — نفس المفتاح
+            // بكل بناء، فأي نسخة جديدة تنصب كـ"تحديث" فوق القديمة تلقائياً.
+            // تقدر تستبدل القيم من متغيرات بيئة (GitHub Actions secrets) لو ما تبي تحط كلمة
+            // المرور مباشرة بالكود، لكن الافتراضي هنا جاهز يشتغل مباشرة بدون أي إعداد إضافي.
+            val ksPath = System.getenv("KEYSTORE_PATH")
+                ?: (project.findProperty("RELEASE_KEYSTORE_PATH") as String?)
+                ?: "${rootDir}/keystore/apkbuilder-release.jks"
+            val ksPass = System.getenv("KEYSTORE_PASSWORD")
+                ?: (project.findProperty("RELEASE_KEYSTORE_PASSWORD") as String?)
+                ?: "ApkBuilder#2025Secure"
+            val alias = System.getenv("KEY_ALIAS")
+                ?: (project.findProperty("RELEASE_KEY_ALIAS") as String?)
+                ?: "apkbuilder"
+            val keyPass = System.getenv("KEY_PASSWORD")
+                ?: (project.findProperty("RELEASE_KEY_PASSWORD") as String?)
+                ?: ksPass
 
-            if (ksPath != null && ksPass != null && alias != null) {
-                storeFile = file(ksPath)
+            val ksFile = file(ksPath)
+            if (ksFile.exists()) {
+                storeFile = ksFile
                 storePassword = ksPass
                 keyAlias = alias
-                keyPassword = keyPass ?: ksPass
+                keyPassword = keyPass
             }
         }
     }
