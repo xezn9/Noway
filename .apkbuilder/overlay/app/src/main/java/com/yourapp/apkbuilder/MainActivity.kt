@@ -17,6 +17,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -62,6 +64,18 @@ class MainActivity : AppCompatActivity() {
         log("تم اختيار المشروع: ${dest.length() / 1024} KB", LogLevel.SUCCESS)
     }
 
+    private val RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND"
+
+    private val requestRunCommandPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            log("تم منح صلاحية RUN_COMMAND.", LogLevel.SUCCESS)
+            checkAndRequestEverything()
+        } else {
+            log("رفضت صلاحية RUN_COMMAND — بدونها ما نقدر نرسل أمر البناء لـ Termux.", LogLevel.ERROR)
+            btnBuild.isEnabled = false
+        }
+    }
+
     private val saveApk = registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")) { uri: Uri? ->
         val apk = outputApk ?: return@registerForActivityResult
         if (uri == null) return@registerForActivityResult
@@ -101,6 +115,12 @@ class MainActivity : AppCompatActivity() {
         if (!TermuxBuilder.isTermuxInstalled(this)) {
             btnBuild.isEnabled = false
             showTermuxRequiredDialog()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            btnBuild.isEnabled = false
+            log("نطلب صلاحية RUN_COMMAND (ضرورية حتى نقدر نرسل أمر البناء لـ Termux)...", LogLevel.STEP)
+            requestRunCommandPermission.launch(RUN_COMMAND_PERMISSION)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
@@ -148,6 +168,9 @@ class MainActivity : AppCompatActivity() {
     private fun runBuild() = lifecycleScope.launch {
         // تحقق أخير قبل البدء (تحسباً لو المستخدم رجع من الإعدادات بدون ما ينعاد فحصه بـ onResume لسبب ما)
         if (!TermuxBuilder.isTermuxInstalled(this@MainActivity)) { showTermuxRequiredDialog(); return@launch }
+        if (ContextCompat.checkSelfPermission(this@MainActivity, RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            checkAndRequestEverything(); return@launch
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             checkAndRequestEverything(); return@launch
         }
