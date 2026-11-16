@@ -64,7 +64,7 @@ class ToolchainManager(
         // رابط Adoptium API يرجع أحدث بناء لنسخة major محددة، منصة aarch64 لينكس
         val apiUrl = "https://api.adoptium.net/v3/binary/latest/$version/ga/linux/aarch64/jdk/hotspot/normal/eclipse"
         val tarGz = File(toolsRoot, "jdk-$version.tar.gz")
-        downloadWithProgress(apiUrl, tarGz) { pct -> onProgress(pct, "تنزيل JDK $version: $pct%") }
+        downloadWithProgress(apiUrl, tarGz) { pct, info -> onProgress(pct, "تنزيل JDK $version: $pct% ($info)") }
         dir.mkdirs()
         extractTarGz(tarGz, dir)
         tarGz.delete()
@@ -82,7 +82,7 @@ class ToolchainManager(
         onProgress(0, "تنزيل Android SDK command-line tools...")
         val url = "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
         val zip = File(toolsRoot, "cmdline-tools.zip")
-        downloadWithProgress(url, zip) { pct -> onProgress(pct, "تنزيل cmdline-tools: $pct%") }
+        downloadWithProgress(url, zip) { pct, info -> onProgress(pct, "تنزيل cmdline-tools: $pct% ($info)") }
 
         val tmp = File(toolsRoot, "cmdline-tools-tmp")
         extractZip(zip, tmp)
@@ -122,7 +122,14 @@ class ToolchainManager(
 
     // ---------- أدوات مساعدة عامة ----------
 
-    private fun downloadWithProgress(url: String, dest: File, maxRetries: Int = 3, progress: (Int) -> Unit) {
+    /**
+     * progress(pct, infoLine) يُستدعى فقط لما:
+     *   - النسبة المئوية تتغير فعلياً (مو كل قطعة 64KB)، أو
+     *   - مرّت ثانية وحدة على آخر تحديث (حتى لو النسبة ثابتة بسبب ملف كبير جداً)
+     * بكل استدعاء نمرر سطر معلومات فيه السرعة الحالية والحجم المحمّل/الكلي،
+     * عشان يكون واضح انه فعلاً يتحمل مو متوقف.
+     */
+    private fun downloadWithProgress(url: String, dest: File, maxRetries: Int = 3, progress: (Int, String) -> Unit) {
         var lastError: Exception? = null
         for (attempt in 1..maxRetries) {
             try {
@@ -132,6 +139,10 @@ class ToolchainManager(
                 conn.connect()
                 val total = conn.contentLengthLong.takeIf { it > 0 } ?: -1L
                 var read = 0L
+                var lastPct = -1
+                var lastReportMs = System.currentTimeMillis()
+                var bytesSinceLastReport = 0L
+
                 conn.getInputStream().use { input ->
                     dest.outputStream().use { out ->
                         val buf = ByteArray(1 shl 16)
@@ -140,7 +151,23 @@ class ToolchainManager(
                             if (n < 0) break
                             out.write(buf, 0, n)
                             read += n
-                            if (total > 0) progress(((read * 100) / total).toInt())
+                            bytesSinceLastReport += n
+
+                            val pct = if (total > 0) ((read * 100) / total).toInt() else -1
+                            val now = System.currentTimeMillis()
+                            val elapsedMs = now - lastReportMs
+
+                            // نبلّغ فقط عند تغيّر النسبة أو كل ~1 ثانية (مو كل قطعة)
+                            if (pct != lastPct || elapsedMs >= 1000) {
+                                val speedKbS = if (elapsedMs > 0) (bytesSinceLastReport * 1000 / elapsedMs) / 1024 else 0
+                                val readMb = read / (1024 * 1024)
+                                val totalMb = if (total > 0) total / (1024 * 1024) else -1
+                                val sizeInfo = if (totalMb > 0) "$readMb/$totalMb MB" else "$readMb MB"
+                                progress(if (pct >= 0) pct else 0, "$sizeInfo — ${speedKbS} KB/s")
+                                lastPct = pct
+                                lastReportMs = now
+                                bytesSinceLastReport = 0
+                            }
                         }
                     }
                 }
