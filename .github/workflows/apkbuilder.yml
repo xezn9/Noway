@@ -74,7 +74,7 @@ jobs:
       - name: 'إعداد Gradle'
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 'current'
+          gradle-version: '8.14.3'
       - name: 'بناء APK'
         working-directory: 'project/'
         run: |

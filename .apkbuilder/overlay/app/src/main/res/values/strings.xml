@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Glass Editor</string>
+    <string name="app_name">Glass Nav</string>
+    <string name="service_desc">Draws an iOS 26 style home bar and back gesture, and performs Home / Recents / Back.</string>
 </resources>
