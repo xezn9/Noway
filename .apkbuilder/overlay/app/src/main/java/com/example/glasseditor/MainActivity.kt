@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -44,19 +45,45 @@ class Stroke2(val points: List<Offset>, val color: Color)
 
 class MainActivity : ComponentActivity() {
 
-    // الصورة تجي من لقطة الشاشة أو من المعرض (ACTION_EDIT) أو من المشاركة (ACTION_SEND)
-    private fun incomingUri(): Uri? = when (intent?.action) {
+    private var bitmap by mutableStateOf<Bitmap?>(null)
+
+    private val picker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { load(it) }
+    }
+
+    // الصورة تجي من ACTION_EDIT / VIEW / SEND
+    private fun incomingUri(i: Intent?): Uri? = when (i?.action) {
         Intent.ACTION_SEND ->
-            @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
-        else -> intent?.data
+            @Suppress("DEPRECATION") i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        Intent.ACTION_SEND_MULTIPLE ->
+            @Suppress("DEPRECATION") i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.firstOrNull()
+        else -> i?.data
+    }
+
+    private fun load(uri: Uri) {
+        try {
+            bitmap = contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+            if (bitmap == null) Toast.makeText(this, "تعذر فتح الصورة", Toast.LENGTH_LONG).show()
+        } catch (e: Throwable) {
+            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val uri = incomingUri()
-        val bmp = uri?.let { contentResolver.openInputStream(it)?.use(BitmapFactory::decodeStream) }
-        setContent { Editor(bmp) { saveBitmap(it) } }
+        incomingUri(intent)?.let { load(it) }
+        setContent {
+            key(bitmap) {
+                Editor(bitmap, onPick = { picker.launch("image/*") }) { saveBitmap(it) }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        incomingUri(intent)?.let { load(it) }
     }
 
     private fun saveBitmap(bmp: Bitmap) {
@@ -72,10 +99,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Editor(bitmap: Bitmap?, onSave: (Bitmap) -> Unit) {
+fun Editor(bitmap: Bitmap?, onPick: () -> Unit, onSave: (Bitmap) -> Unit) {
     if (bitmap == null) {
         Box(Modifier.fillMaxSize().background(Color.Black), Alignment.Center) {
-            Text("لا توجد صورة", color = Color.White)
+            Text("اختر صورة", color = Color.White, fontSize = 20.sp,
+                modifier = Modifier.clickable(onClick = onPick)
+                    .background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
+                    .padding(horizontal = 32.dp, vertical = 16.dp))
         }
         return
     }
