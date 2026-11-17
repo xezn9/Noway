@@ -1,12 +1,11 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.example.glassnav"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.example.glassnav"
@@ -15,8 +14,21 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
+    // Fixed signing key: same signature on every build, so updates install over the old app
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("glassnav.keystore")
+            storePassword = "glassnav123"
+            keyAlias = "glassnav"
+            keyPassword = "glassnav123"
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        debug { signingConfig = signingConfigs.getByName("fixed") }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
