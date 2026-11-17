@@ -58,8 +58,10 @@ class GlassNavService : AccessibilityService(), SharedPreferences.OnSharedPrefer
             addBar(p.getBoolean(Prefs.COVER, false), p.getBoolean(Prefs.COVER_WHITE, false))
         }
         if (p.getBoolean(Prefs.BACK, true)) {
-            addEdge(left = true)
-            addEdge(left = false)
+            val light = p.getBoolean(Prefs.EDGE_LIGHT, false)
+            val reserve = if (p.getBoolean(Prefs.BAR, true)) dp(if (p.getBoolean(Prefs.COVER, false)) 56f else 36f) else 0
+            addEdge(left = true, light = light, bottomReserve = reserve)
+            addEdge(left = false, light = light, bottomReserve = reserve)
         }
     }
 
@@ -105,43 +107,44 @@ class GlassNavService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     }
 
     // ---------------------------------------------------------- Back gesture
-    private fun addEdge(left: Boolean) {
+    private fun addEdge(left: Boolean, light: Boolean, bottomReserve: Int) {
         val state = EdgeState()
         val side = if (left) Gravity.START else Gravity.END
 
-        // 1) visual window (not touchable, shown only while dragging)
-        val visual = composeView { EdgeBulge(state, left) }.apply { visibility = View.GONE }
-        val vh = dp(260f)
-        val vlp = params(dp(140f), vh, false).apply { gravity = Gravity.TOP or side }
+        // 1) visual window: full height, so the bulge can appear at any Y (not touchable)
+        val visual = composeView { EdgeBulge(state, left, light) }
+        val vlp = params(dp(140f), WindowManager.LayoutParams.MATCH_PARENT, false)
+            .apply { gravity = Gravity.TOP or side }
         wm.addView(visual, vlp)
 
-        // 2) thin touch strip on the edge
+        // 2) thin touch strip along the whole edge (leaves the home bar area free)
         val touch = View(this)
         excludeFromSystemGestures(touch)
-        val tlp = params(dp(18f), dp(200f), true).apply { gravity = side or Gravity.CENTER_VERTICAL }
+        val screenH = wm.currentWindowMetrics.bounds.height()
+        val tlp = params(dp(18f), (screenH - bottomReserve).coerceAtLeast(dp(200f)), true)
+            .apply { gravity = Gravity.TOP or side }
 
         var startX = 0f
-        var armed = false
-        val threshold = dp(70f)
-        val full = dp(90f).toFloat()
+        val threshold = dp(60f)
 
         touch.setOnTouchListener { v, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = ev.rawX
-                    armed = false
-                    vlp.y = (ev.rawY - vh / 2f).toInt().coerceAtLeast(0)
-                    wm.updateViewLayout(visual, vlp)
-                    handler.removeCallbacksAndMessages(visual)
-                    visual.visibility = View.VISIBLE
+                    state.dx = 0f
+                    state.y = ev.rawY
+                    state.armed = false
+                    state.downCount++
+                    state.active = true
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = if (left) ev.rawX - startX else startX - ev.rawX
-                    state.progress = (dx / full).coerceIn(0f, 1.2f)
+                    state.dx = dx
+                    state.y = ev.rawY
                     val nowArmed = dx > threshold
-                    if (nowArmed && !armed) v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    armed = nowArmed
+                    if (nowArmed && !state.armed) v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    state.armed = nowArmed
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -149,8 +152,8 @@ class GlassNavService : AccessibilityService(), SharedPreferences.OnSharedPrefer
                     if (ev.actionMasked == MotionEvent.ACTION_UP && dx > threshold) {
                         performGlobalAction(GLOBAL_ACTION_BACK)
                     }
-                    state.progress = 0f
-                    handler.postDelayed({ visual.visibility = View.GONE }, visual, 600)
+                    state.armed = false
+                    state.active = false   // the bulge slides back with a bounce
                     true
                 }
                 else -> false

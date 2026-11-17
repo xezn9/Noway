@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.glassnav"
         minSdk = 33   // lens effect of Backdrop needs Android 13+
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
     // Fixed signing key: same signature on every build, so updates install over the old app
     signingConfigs {

@@ -6,12 +6,14 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -43,6 +46,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -72,6 +77,7 @@ private fun Home() {
     var back by remember { mutableStateOf(sp.getBoolean(Prefs.BACK, true)) }
     var cover by remember { mutableStateOf(sp.getBoolean(Prefs.COVER, false)) }
     var white by remember { mutableStateOf(sp.getBoolean(Prefs.COVER_WHITE, false)) }
+    var light by remember { mutableStateOf(sp.getBoolean(Prefs.EDGE_LIGHT, false)) }
 
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().padding(20.dp),
@@ -90,6 +96,21 @@ private fun Home() {
         SwitchRow("Back gesture from edges", back) { back = it; sp.edit().putBoolean(Prefs.BACK, it).apply() }
         SwitchRow("Cover the 3-button nav bar", cover) { cover = it; sp.edit().putBoolean(Prefs.COVER, it).apply() }
         SwitchRow("Cover colour: white (off = black)", white) { white = it; sp.edit().putBoolean(Prefs.COVER_WHITE, it).apply() }
+
+        Text("Back gesture glass", style = MaterialTheme.typography.titleMedium)
+        EdgePreview(light)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FilterChip(
+                selected = !light,
+                onClick = { light = false; sp.edit().putBoolean(Prefs.EDGE_LIGHT, false).apply() },
+                label = { Text("Dark") }
+            )
+            FilterChip(
+                selected = light,
+                onClick = { light = true; sp.edit().putBoolean(Prefs.EDGE_LIGHT, true).apply() },
+                label = { Text("Light") }
+            )
+        }
 
         Text(
             "Tip: set System > Navigation mode to 3-button, then turn on \"Cover the 3-button nav bar\".",
@@ -151,5 +172,30 @@ private fun GlassDemo() {
                 ),
             contentAlignment = Alignment.Center
         ) { Text("Liquid Glass", color = Color.White) }
+    }
+}
+
+/** Animated preview of the back-gesture bulge in the chosen style. */
+@Composable
+private fun EdgePreview(light: Boolean) {
+    val t = rememberInfiniteTransition(label = "edge")
+    val k by t.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "k"
+    )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(170.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B))))
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val maxW = BulgeMaxW.toPx()
+            withTransform({ scale(-1f, 1f, Offset(size.width / 2f, 0f)) }) {
+                drawGlassBulge(light, maxW * k, size.height / 2f, BulgeHalfH.toPx() * 0.9f, k * 1.4f, 1f)
+            }
+        }
     }
 }
