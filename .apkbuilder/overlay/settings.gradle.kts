@@ -1,4 +1,16 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-dependencyResolutionManagement { repositories { google(); mavenCentral() } }
-rootProject.name = "ApkBuilderApp"
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "GlassEditor"
 include(":app")

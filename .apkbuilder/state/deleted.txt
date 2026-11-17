@@ -17,10 +17,8 @@ app/src/main/java/com/kyant/backdrop/catalog/utils/DampedDragAnimation.kt
 app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
 app/src/main/res/xml/accessibility_service_config.xml
 app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 app/src/main/res/drawable/ic_launcher_background.xml
 app/src/main/res/drawable/ic_launcher_monochrome.xml
 app/glassvolume.jks
-.gitignore
 gradle/wrapper/gradle-wrapper.properties
 gradlew.bat
