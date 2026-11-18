@@ -370,6 +370,7 @@ private fun GlassPage(
 ) {
     PageColumn {
         GlassStylePreview(style, Modifier.fillMaxWidth())
+        val ctxForBlur = androidx.compose.ui.platform.LocalContext.current
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             GlassCard(backdrop, dark) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -386,6 +387,16 @@ private fun GlassPage(
                     "ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تحاكي الشكل. يحتاج أندرويد 12 أو أحدث وتفعيل «ضبابية النوافذ» بالجهاز.",
                     color = inkColor(dark).copy(alpha = 0.65f), fontSize = 13.sp,
                 )
+                val blurOk = remember {
+                    android.os.Build.VERSION.SDK_INT >= 31 &&
+                        (ctxForBlur.getSystemService(android.view.WindowManager::class.java)?.isCrossWindowBlurEnabled == true)
+                }
+                if (style.xos && !blurOk) {
+                    Text(
+                        "⚠️ جهازك مطفّي «ضبابية النوافذ» (غالباً وضع توفير البطارية أو إعدادات الشركة). XOS ما راح يغبّش، فاللوحة ترجع تلقائياً للزجاج العادي (backdrop).",
+                        color = Color(0xFFFF9500), fontSize = 13.sp,
+                    )
+                }
                 if (style.xos) {
                     SettingSlider("ضبابية XOS", pct(style.xosBlur), { style.xosBlur },
                         { onStyle(style.copy(xosBlur = it)) }, backdrop, dark)

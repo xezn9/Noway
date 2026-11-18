@@ -252,7 +252,9 @@ class VolumeAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(revealCheck)
         handler.removeCallbacks(watchdog)
         ctrl.reloadStyle()   // آخر إعدادات زجاج/ألوان من التطبيق
-        xosOn = ctrl.style.xos
+        xosOn = ctrl.style.xos && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled
+        // الجهاز مطفّي ضبابية النوافذ: نرجع للـ backdrop تلقائياً بدل شفافية بدون ضبابية
+        if (ctrl.style.xos && !xosOn) ctrl.style = ctrl.style.copy(xos = false)
         xosBlurPx = (ctrl.style.xosBlurDp * resources.displayMetrics.density).toInt()
         // XOS: بدون لقطة شاشة وبدون لقطات حية، النظام يغبّش بنفسه
         ctrl.shot = if (xosOn) null else ctrl.lastShot
@@ -274,14 +276,18 @@ class VolumeAccessibilityService : AccessibilityService() {
         setWindowShown(false)
     }
 
+    /** XOS يشتغل فقط إذا مفعّل بالتطبيق + أندرويد 12+ + الجهاز يسمح بضبابية النوافذ */
     private fun isXosEnabled(): Boolean =
-        GlassStyle.load(getSharedPreferences(Prefs.NAME, MODE_PRIVATE)).xos
+        Build.VERSION.SDK_INT >= 31 &&
+            GlassStyle.load(getSharedPreferences(Prefs.NAME, MODE_PRIVATE)).xos &&
+            wm.isCrossWindowBlurEnabled
 
     /** نحط نافذة الضبابية على [r] (إحداثيات الشاشة) أو نخفيها إذا null */
     private fun applyBlur(r: Rect?) {
         if (Build.VERSION.SDK_INT < 31) return
         val v = blurView ?: return
         val lp = blurParams ?: return
+        if (LIVE_DEBUG) Log.d("GlassXOS", "blurEnabled=${wm.isCrossWindowBlurEnabled} radiusPx=$xosBlurPx rect=$r")
         if (r == null || xosBlurPx <= 0) {
             if (lp.blurBehindRadius == 0 && lp.width == 1) return
             lp.blurBehindRadius = 0; lp.width = 1; lp.height = 1
@@ -501,7 +507,8 @@ class VolumeAccessibilityService : AccessibilityService() {
         params = lp
         // نافذة الضبابية لازم تنضاف قبل نافذة الرسم حتى تكون تحتها (وما تتغبّش اللوحة نفسها)
         if (Build.VERSION.SDK_INT >= 31) {
-            val bv = View(this)
+            // خلفية شبه معدومة (1/255) حتى النظام يرسم طبقة للنافذة ويطبّق عليها الضبابية
+            val bv = View(this).apply { setBackgroundColor(0x01000000) }
             val blp = WindowManager.LayoutParams(
                 1, 1,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
