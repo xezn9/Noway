@@ -1,0 +1,24 @@
+package com.glass.launcher
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+
+/** Liquid glass surface (Backdrop 2.0.0). All glass styling lives here: if the API differs, fix this one file. */
+fun Modifier.glass(backdrop: Backdrop, radius: Dp = 28.dp): Modifier = drawBackdrop(
+    backdrop = backdrop,
+    shape = { RoundedCornerShape(radius) },
+    effects = {
+        vibrancy()
+        blur(4.dp.toPx())
+        lens(16.dp.toPx(), 32.dp.toPx())
+    },
+    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.16f)) }
+)
