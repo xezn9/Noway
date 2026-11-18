@@ -65,6 +65,12 @@ class VolumeAccessibilityService : AccessibilityService() {
     private var panelBounds: Rect? = null
     private var catcherTouchable = false
 
+    // XOS: نافذة صغيرة تحت نافذة الرسم، النظام يغبّش اللي تحتها (blur behind). تتبع مكان اللوحة
+    private var blurView: View? = null
+    private var blurParams: WindowManager.LayoutParams? = null
+    private var xosOn = false
+    private var xosBlurPx = 0
+
     private val handler = Handler(Looper.getMainLooper())
     private val shotExecutor = Executors.newSingleThreadExecutor()
 
@@ -226,7 +232,7 @@ class VolumeAccessibilityService : AccessibilityService() {
 
         // لقطة حديثة (أقل من ثانية)؟ نستخدمها وما نحتاج لقطة جديدة
         val cacheOk = ctrl.lastShot != null && now - ctrl.lastShotAt < CACHE_MS
-        if (cacheOk) capturing = false else captureBackdrop()
+        if (cacheOk || isXosEnabled()) capturing = false else captureBackdrop()
 
         handler.removeCallbacks(revealCheck)
         handler.removeCallbacks(watchdog)
@@ -245,12 +251,15 @@ class VolumeAccessibilityService : AccessibilityService() {
         pendingShow = false
         handler.removeCallbacks(revealCheck)
         handler.removeCallbacks(watchdog)
-        ctrl.shot = ctrl.lastShot
         ctrl.reloadStyle()   // آخر إعدادات زجاج/ألوان من التطبيق
+        xosOn = ctrl.style.xos
+        xosBlurPx = (ctrl.style.xosBlurDp * resources.displayMetrics.density).toInt()
+        // XOS: بدون لقطة شاشة وبدون لقطات حية، النظام يغبّش بنفسه
+        ctrl.shot = if (xosOn) null else ctrl.lastShot
         shown = true
         setWindowShown(true)
         ctrl.active = true
-        startLive()
+        if (!xosOn) startLive()
     }
 
     /** الواجهة خلصت أنيميشن الخروج */
@@ -260,7 +269,28 @@ class VolumeAccessibilityService : AccessibilityService() {
         ctrl.dragging = false
         ctrl.shot = null
         stopLive()
+        xosOn = false
+        applyBlur(null)
         setWindowShown(false)
+    }
+
+    private fun isXosEnabled(): Boolean =
+        GlassStyle.load(getSharedPreferences(Prefs.NAME, MODE_PRIVATE)).xos
+
+    /** نحط نافذة الضبابية على [r] (إحداثيات الشاشة) أو نخفيها إذا null */
+    private fun applyBlur(r: Rect?) {
+        if (Build.VERSION.SDK_INT < 31) return
+        val v = blurView ?: return
+        val lp = blurParams ?: return
+        if (r == null || xosBlurPx <= 0) {
+            if (lp.blurBehindRadius == 0 && lp.width == 1) return
+            lp.blurBehindRadius = 0; lp.width = 1; lp.height = 1
+        } else {
+            lp.x = r.left; lp.y = r.top
+            lp.width = r.width().coerceAtLeast(1); lp.height = r.height().coerceAtLeast(1)
+            lp.blurBehindRadius = xosBlurPx
+        }
+        try { wm.updateViewLayout(v, lp) } catch (_: Exception) { }
     }
 
     private fun captureBackdrop() {
@@ -469,6 +499,24 @@ class VolumeAccessibilityService : AccessibilityService() {
         owner = o
         view = v
         params = lp
+        // نافذة الضبابية لازم تنضاف قبل نافذة الرسم حتى تكون تحتها (وما تتغبّش اللوحة نفسها)
+        if (Build.VERSION.SDK_INT >= 31) {
+            val bv = View(this)
+            val blp = WindowManager.LayoutParams(
+                1, 1,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                BLUR_FLAGS,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                blurBehindRadius = 0
+                title = "GlassVolumeBlur"
+            }
+            blurView = bv
+            blurParams = blp
+            try { wm.addView(bv, blp) } catch (_: Throwable) { blurView = null; blurParams = null }
+        }
         wm.addView(v, lp)
 
         // نافذة اللمس: حجمها يتبع اللوحة، وأي لمسة برّاها توصلها كـ ACTION_OUTSIDE (نسكّر اللوحة) وتكمل للتطبيق اللي تحت
@@ -531,6 +579,12 @@ class VolumeAccessibilityService : AccessibilityService() {
             r.bottom.toInt() + loc[1] + pad,
         )
         panelBounds = b
+        if (xosOn && shown) {
+            applyBlur(Rect(
+                r.left.toInt() + loc[0], r.top.toInt() + loc[1],
+                r.right.toInt() + loc[0], r.bottom.toInt() + loc[1],
+            ))
+        }
         if (!catcherTouchable) return
         val c = catcher ?: return
         val lp = catcherParams ?: return
@@ -561,6 +615,8 @@ class VolumeAccessibilityService : AccessibilityService() {
         AlwaysOn.stopKeepAlive(this)
         view?.let { try { wm.removeView(it) } catch (_: Exception) { } }
         catcher?.let { try { wm.removeView(it) } catch (_: Exception) { } }
+        blurView?.let { try { wm.removeView(it) } catch (_: Exception) { } }
+        blurView = null; blurParams = null
         owner?.destroy()
         view = null; owner = null; params = null
         catcher = null; catcherParams = null
@@ -587,6 +643,12 @@ class VolumeAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         const val CATCHER_OFF_FLAGS = CATCHER_ON_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        const val BLUR_FLAGS =
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_BLUR_BEHIND
         const val HIDDEN_FLAGS =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or

@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -140,7 +141,14 @@ fun Modifier.liquidGlass(
     joinBottom: () -> Float = { 0f },   // 0..1: يمسح الحافة من تحت
     blurRadius: Dp = 1.dp,              // شدة الضبابية (من الإعدادات)
     rimColor: Color = Color.White,      // لون اللمعة والحافة (من الإعدادات)
-) = drawBackdrop(
+    xos: Boolean = false,               // true = بدون backdrop: سطح شفاف فقط، والضبابية من نافذة النظام (الخدمة)
+): Modifier {
+    if (xos) {
+        return this
+            .clip(shape)
+            .drawBehind { drawGlassSurface(tint, corner, rim, joinTop(), joinBottom(), rimColor) }
+    }
+    return drawBackdrop(
     backdrop = backdrop,
     shape = { shape },
     effects = {
@@ -151,57 +159,66 @@ fun Modifier.liquidGlass(
             lens(lensHeight.toPx() * (1f + 0.2f * b), lensAmount.toPx() * (1f + 0.35f * b))
         }
     },
-    onDrawSurface = {
-        drawRect(tint)
-        val r = corner?.toPx() ?: (minOf(size.width, size.height) / 2f)
-        val cr = CornerRadius(r, r)
-        val jt = joinTop()
-        val jb = joinBottom()
-        val erase = jt > 0.001f || jb > 0.001f
-        // لو فيه التصاق: نرسم اللمعة + الحافة بطبقة مستقلة ونمسح منها مكان الجسر
-        if (erase) drawIntoCanvas { it.saveLayer(Rect(Offset.Zero, size), Paint()) }
-        // لمعة علوية ناعمة
-        drawRoundRect(
-            brush = Brush.verticalGradient(
-                0f to rimColor.mulAlpha(0.14f * rim),
-                0.5f to rimColor.mulAlpha(0f),
+    onDrawSurface = { drawGlassSurface(tint, corner, rim, joinTop(), joinBottom(), rimColor) },
+    )
+}
+
+/** سطح الزجاج: تلوين + لمعة علوية + حافة (مشترك بين وضع backdrop ووضع XOS) */
+private fun DrawScope.drawGlassSurface(
+    tint: Color,
+    corner: Dp?,
+    rim: Float,
+    jt: Float,
+    jb: Float,
+    rimColor: Color,
+) {
+    drawRect(tint)
+    val r = corner?.toPx() ?: (minOf(size.width, size.height) / 2f)
+    val cr = CornerRadius(r, r)
+    val erase = jt > 0.001f || jb > 0.001f
+    // لو فيه التصاق: نرسم اللمعة + الحافة بطبقة مستقلة ونمسح منها مكان الجسر
+    if (erase) drawIntoCanvas { it.saveLayer(Rect(Offset.Zero, size), Paint()) }
+    // لمعة علوية ناعمة
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0f to rimColor.mulAlpha(0.14f * rim),
+            0.5f to rimColor.mulAlpha(0f),
+        ),
+        cornerRadius = cr,
+    )
+    // حافة زجاجية
+    val sw = 1.6.dp.toPx()
+    drawRoundRect(
+        brush = Brush.linearGradient(
+            0f to rimColor.mulAlpha(0.85f * rim),
+            0.32f to rimColor.mulAlpha(0.10f * rim),
+            0.68f to rimColor.mulAlpha(0.08f * rim),
+            1f to rimColor.mulAlpha(0.55f * rim),
+            start = Offset.Zero,
+            end = Offset(size.width, size.height),
+        ),
+        topLeft = Offset(sw / 2f, sw / 2f),
+        size = Size(size.width - sw, size.height - sw),
+        cornerRadius = CornerRadius(maxOf(r - sw / 2f, 0f)),
+        style = Stroke(width = sw),
+    )
+    if (erase) {
+        val er = 26.dp.toPx()
+        fun eraseAt(center: Offset, a: Float) = drawRect(
+            brush = Brush.radialGradient(
+                0f to Color.Black.copy(alpha = a.coerceIn(0f, 1f)),
+                0.6f to Color.Black.copy(alpha = a.coerceIn(0f, 1f)),
+                1f to Color.Transparent,
+                center = center,
+                radius = er,
             ),
-            cornerRadius = cr,
+            blendMode = BlendMode.DstOut,
         )
-        // حافة زجاجية
-        val sw = 1.6.dp.toPx()
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                0f to rimColor.mulAlpha(0.85f * rim),
-                0.32f to rimColor.mulAlpha(0.10f * rim),
-                0.68f to rimColor.mulAlpha(0.08f * rim),
-                1f to rimColor.mulAlpha(0.55f * rim),
-                start = Offset.Zero,
-                end = Offset(size.width, size.height),
-            ),
-            topLeft = Offset(sw / 2f, sw / 2f),
-            size = Size(size.width - sw, size.height - sw),
-            cornerRadius = CornerRadius(maxOf(r - sw / 2f, 0f)),
-            style = Stroke(width = sw),
-        )
-        if (erase) {
-            val er = 26.dp.toPx()
-            fun eraseAt(center: Offset, a: Float) = drawRect(
-                brush = Brush.radialGradient(
-                    0f to Color.Black.copy(alpha = a.coerceIn(0f, 1f)),
-                    0.6f to Color.Black.copy(alpha = a.coerceIn(0f, 1f)),
-                    1f to Color.Transparent,
-                    center = center,
-                    radius = er,
-                ),
-                blendMode = BlendMode.DstOut,
-            )
-            if (jb > 0.001f) eraseAt(Offset(size.width / 2f, size.height), jb)
-            if (jt > 0.001f) eraseAt(Offset(size.width / 2f, 0f), jt)
-            drawIntoCanvas { it.restore() }
-        }
-    },
-)
+        if (jb > 0.001f) eraseAt(Offset(size.width / 2f, size.height), jb)
+        if (jt > 0.001f) eraseAt(Offset(size.width / 2f, 0f), jt)
+        drawIntoCanvas { it.restore() }
+    }
+}
 
 /** يضرب شفافية اللون (alpha) بمعامل، ويحصرها 0..1 */
 private fun Color.mulAlpha(a: Float) = copy(alpha = (alpha * a).coerceIn(0f, 1f))
@@ -228,6 +245,7 @@ private fun Modifier.barGlass(
         joinBottom = joinBottom,
         blurRadius = st.barBlurDp,
         rimColor = st.rimColor,
+        xos = st.xos,
     )
 }
 
@@ -251,6 +269,7 @@ private fun Modifier.btnGlass(
         joinTop = joinTop,
         blurRadius = st.btnBlurDp,
         rimColor = st.rimColor,
+        xos = st.xos,
     )
 }
 
@@ -957,7 +976,7 @@ fun GlassStylePreview(style: GlassStyle, modifier: Modifier = Modifier) {
 
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Ltr,
-        LocalGlassStyle provides style,
+        LocalGlassStyle provides style.copy(xos = false),   // المعاينة دايماً backdrop (ما فيه نافذة ضبابية بالتطبيق)
     ) {
         Box(
             modifier

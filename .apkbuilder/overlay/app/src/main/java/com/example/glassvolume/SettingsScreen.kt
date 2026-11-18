@@ -370,6 +370,24 @@ private fun GlassPage(
 ) {
     PageColumn {
         GlassStylePreview(style, Modifier.fillMaxWidth())
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            GlassCard(backdrop, dark) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("XOS", color = inkColor(dark), fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f))
+                    LiquidToggle(
+                        selected = { style.xos },
+                        onSelect = { onStyle(style.copy(xos = it)) },
+                        backdrop = backdrop,
+                        dark = dark,
+                    )
+                }
+                Text(
+                    "ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تبقى بالزجاج العادي. يحتاج أندرويد 12 أو أحدث وتفعيل «ضبابية النوافذ» بالجهاز.",
+                    color = inkColor(dark).copy(alpha = 0.65f), fontSize = 13.sp,
+                )
+            }
+        }
         GroupTitle("الشريط (السلايدر)", dark)
         GlassCard(backdrop, dark) {
             SettingSlider("شدة الضبابية", pct(style.barBlur), { style.barBlur },
