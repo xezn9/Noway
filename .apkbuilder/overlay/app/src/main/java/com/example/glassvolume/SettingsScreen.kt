@@ -383,9 +383,15 @@ private fun GlassPage(
                     )
                 }
                 Text(
-                    "ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تبقى بالزجاج العادي. يحتاج أندرويد 12 أو أحدث وتفعيل «ضبابية النوافذ» بالجهاز.",
+                    "ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تحاكي الشكل. يحتاج أندرويد 12 أو أحدث وتفعيل «ضبابية النوافذ» بالجهاز.",
                     color = inkColor(dark).copy(alpha = 0.65f), fontSize = 13.sp,
                 )
+                if (style.xos) {
+                    SettingSlider("ضبابية XOS", pct(style.xosBlur), { style.xosBlur },
+                        { onStyle(style.copy(xosBlur = it)) }, backdrop, dark)
+                    SettingSlider("شفافية XOS", pct(style.xosTransparency), { style.xosTransparency },
+                        { onStyle(style.copy(xosTransparency = it)) }, backdrop, dark)
+                }
             }
         }
         GroupTitle("الشريط (السلايدر)", dark)

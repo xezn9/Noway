@@ -49,9 +49,11 @@ data class GlassStyle(
 
     // ───── XOS: ضبابية النظام الحية (بدل backdrop). أندرويد 12+ ─────
     val xos: Boolean = false,
+    val xosBlur: Float = 0.45f,           // 0..1 → 0..XOS_MAX_BLUR dp
+    val xosTransparency: Float = 0.9f,    // 1 = شفاف تماماً، 0 = كثيف
 ) {
-    /** نصف قطر ضبابية النظام (dp): نستعمل سلايدر ضبابية الشريط، بحد أدنى حتى تبين */
-    val xosBlurDp: Float get() = 14f + barBlur * 40f
+    val xosBlurDp: Float get() = xosBlur * XOS_MAX_BLUR
+    val xosTintAlpha: Float get() = (1f - xosTransparency) * MAX_TINT
 
     // الشريط
     val barBlurDp: Dp get() = (barBlur * MAX_BLUR).dp
@@ -70,6 +72,8 @@ data class GlassStyle(
     fun save(p: SharedPreferences) {
         p.edit()
             .putBoolean(KEY_XOS, xos)
+            .putFloat(K_XOS_BLUR, xosBlur)
+            .putFloat(K_XOS_TRANS, xosTransparency)
             .putFloat(K_BAR_BLUR, barBlur)
             .putFloat(K_BAR_REFR, barRefraction)
             .putFloat(K_BAR_TRANS, barTransparency)
@@ -103,6 +107,9 @@ data class GlassStyle(
         const val RIM_MAX = 1.5f
 
         const val KEY_XOS = "g_xos"
+        private const val K_XOS_BLUR = "g_xos_blur"
+        private const val K_XOS_TRANS = "g_xos_transparency"
+        const val XOS_MAX_BLUR = 40f   // dp
         private const val K_BAR_BLUR = "g_bar_blur"
         private const val K_BAR_REFR = "g_bar_refraction"
         private const val K_BAR_TRANS = "g_bar_transparency"
@@ -154,6 +161,8 @@ data class GlassStyle(
                 rimColor = Color(p.getInt(C_RIM, d.rimColor.toArgb())),
                 labelColor = Color(p.getInt(C_LABEL, d.labelColor.toArgb())),
                 xos = p.getBoolean(KEY_XOS, false) && Build.VERSION.SDK_INT >= 31,
+                xosBlur = p.getFloat(K_XOS_BLUR, d.xosBlur),
+                xosTransparency = p.getFloat(K_XOS_TRANS, d.xosTransparency),
             )
         }
     }
@@ -161,6 +170,9 @@ data class GlassStyle(
 
 /** المظهر الحالي: اللوحة والمعاينة يقرؤون منه (بدل ما نمرّره بكل دالة) */
 val LocalGlassStyle = compositionLocalOf { GlassStyle.Default }
+
+/** true داخل معاينة الإعدادات: نحاكي ضبابية XOS بالـ backdrop (التطبيق ما يقدر يغبّش نوافذ ثانية) */
+val LocalXosPreview = compositionLocalOf { false }
 
 /** كل لون قابل للتعديل: عنوانه، مجموعته، وهل يدعم الشفافية */
 enum class ColorSlot(

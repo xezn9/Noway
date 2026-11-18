@@ -234,6 +234,21 @@ private fun Modifier.barGlass(
     lensScale: Float = 1f,
 ): Modifier {
     val st = LocalGlassStyle.current
+    if (st.xos) {
+        // XOS: بدون انكسار. الضبابية من النظام (أو محاكاتها بالمعاينة)، والشفافية من سلايدر XOS
+        return liquidGlass(
+            backdrop, shape,
+            tint = st.barTint.copy(alpha = st.xosTintAlpha),
+            lensHeight = 0.dp, lensAmount = 0.dp,
+            boost = boost,
+            rim = st.barRimMul,
+            corner = corner,
+            joinBottom = joinBottom,
+            blurRadius = st.xosBlurDp.dp,
+            rimColor = st.rimColor,
+            xos = !LocalXosPreview.current,
+        )
+    }
     return liquidGlass(
         backdrop, shape,
         tint = st.barTint.copy(alpha = st.barTintAlpha),
@@ -259,6 +274,20 @@ private fun Modifier.btnGlass(
     joinTop: () -> Float = { 0f },
 ): Modifier {
     val st = LocalGlassStyle.current
+    if (st.xos) {
+        // زر الصامت (تعبئة كثيفة) يبقى، الباقي يتبع شفافية XOS
+        return liquidGlass(
+            backdrop, shape,
+            tint = if (tint.alpha > 0.5f) tint else tint.copy(alpha = st.xosTintAlpha),
+            lensHeight = 0.dp, lensAmount = 0.dp,
+            boost = boost,
+            rim = st.btnRimMul,
+            joinTop = joinTop,
+            blurRadius = st.xosBlurDp.dp,
+            rimColor = st.rimColor,
+            xos = !LocalXosPreview.current,
+        )
+    }
     return liquidGlass(
         backdrop, shape,
         tint = tint,
@@ -976,7 +1005,8 @@ fun GlassStylePreview(style: GlassStyle, modifier: Modifier = Modifier) {
 
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Ltr,
-        LocalGlassStyle provides style.copy(xos = false),   // المعاينة دايماً backdrop (ما فيه نافذة ضبابية بالتطبيق)
+        LocalGlassStyle provides style,
+        LocalXosPreview provides true,   // المعاينة تحاكي ضبابية XOS بالـ backdrop
     ) {
         Box(
             modifier
