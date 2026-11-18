@@ -60,7 +60,7 @@ private fun weatherText(code: Int) = when (code) {
 }
 
 @Composable
-fun WeatherWidget(backdrop: Backdrop, modifier: Modifier = Modifier) {
+fun WeatherWidget(backdrop: Backdrop, modifier: Modifier = Modifier, fahrenheit: Boolean = false) {
     val ctx = LocalContext.current
     var text by remember { mutableStateOf("...") }
     var granted by remember {
@@ -68,7 +68,7 @@ fun WeatherWidget(backdrop: Backdrop, modifier: Modifier = Modifier) {
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) launcher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
-    LaunchedEffect(granted) {
+    LaunchedEffect(granted, fahrenheit) {
         while (true) {
             text = withContext(Dispatchers.IO) {
                 try {
@@ -78,7 +78,7 @@ fun WeatherWidget(backdrop: Backdrop, modifier: Modifier = Modifier) {
                         lm.getProviders(true).firstNotNullOfOrNull { lm.getLastKnownLocation(it) }
                             ?.let { lat = it.latitude; lon = it.longitude }
                     }
-                    val json = JSONObject(URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code").readText())
+                    val json = JSONObject(URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code" + if (fahrenheit) "&temperature_unit=fahrenheit" else "").readText())
                     val cur = json.getJSONObject("current")
                     "${cur.getDouble("temperature_2m").toInt()}°  ${weatherText(cur.getInt("weather_code"))}"
                 } catch (e: Exception) { "—" }
