@@ -252,9 +252,7 @@ class VolumeAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(revealCheck)
         handler.removeCallbacks(watchdog)
         ctrl.reloadStyle()   // آخر إعدادات زجاج/ألوان من التطبيق
-        xosOn = ctrl.style.xos && Build.VERSION.SDK_INT >= 31 && wm.isCrossWindowBlurEnabled
-        // الجهاز مطفّي ضبابية النوافذ: نرجع للـ backdrop تلقائياً بدل شفافية بدون ضبابية
-        if (ctrl.style.xos && !xosOn) ctrl.style = ctrl.style.copy(xos = false)
+        xosOn = ctrl.style.xos && Build.VERSION.SDK_INT >= 31
         xosBlurPx = (ctrl.style.xosBlurDp * resources.displayMetrics.density).toInt()
         // XOS: بدون لقطة شاشة وبدون لقطات حية، النظام يغبّش بنفسه
         ctrl.shot = if (xosOn) null else ctrl.lastShot
@@ -276,11 +274,10 @@ class VolumeAccessibilityService : AccessibilityService() {
         setWindowShown(false)
     }
 
-    /** XOS يشتغل فقط إذا مفعّل بالتطبيق + أندرويد 12+ + الجهاز يسمح بضبابية النوافذ */
+    /** XOS شغّال: مفعّل بالتطبيق + أندرويد 12+ (ما نرجع للـ backdrop أبداً) */
     private fun isXosEnabled(): Boolean =
         Build.VERSION.SDK_INT >= 31 &&
-            GlassStyle.load(getSharedPreferences(Prefs.NAME, MODE_PRIVATE)).xos &&
-            wm.isCrossWindowBlurEnabled
+            GlassStyle.load(getSharedPreferences(Prefs.NAME, MODE_PRIVATE)).xos
 
     /** نحط نافذة الضبابية على [r] (إحداثيات الشاشة) أو نخفيها إذا null */
     private fun applyBlur(r: Rect?) {

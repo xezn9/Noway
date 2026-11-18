@@ -384,18 +384,28 @@ private fun GlassPage(
                     )
                 }
                 Text(
-                    "ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تحاكي الشكل. يحتاج أندرويد 12 أو أحدث وتفعيل «ضبابية النوافذ» بالجهاز.",
+"ضبابية وشفافية حية من النظام نفسه: الخلفية تتحدّث لحظياً بدون لقطات شاشة، بس بدون انكسار. عند الإطفاء يرجع الزجاج (backdrop) مثل قبل. المعاينة فوق تحاكي الشكل. يحتاج أندرويد 12 أو أحدث وإن جهازك يدعم ضبابية النوافذ.",
                     color = inkColor(dark).copy(alpha = 0.65f), fontSize = 13.sp,
                 )
-                val blurOk = remember {
-                    android.os.Build.VERSION.SDK_INT >= 31 &&
-                        (ctxForBlur.getSystemService(android.view.WindowManager::class.java)?.isCrossWindowBlurEnabled == true)
+                var recheck by remember { mutableIntStateOf(0) }
+                val st = remember(recheck) { xosBlurStatus(ctxForBlur) }
+                Text(
+                    if (st.supported) "✅ ضبابية النظام شغّالة بجهازك."
+                    else "⚠️ ضبابية النظام مطفّية بجهازك، فXOS ما راح يغبّش لحد ما تنفتح.\n" + st.reason,
+                    color = if (st.supported) Color(0xFF34C759) else Color(0xFFFF9500), fontSize = 13.sp,
+                )
+                if (!st.supported && st.canFix) {
+                    LiquidButton(
+                        onClick = { xosTryFix(ctxForBlur, st); recheck++ },
+                        backdrop = backdrop,
+                        tint = AccentBlue,
+                    ) { Text("إصلاح", color = Color.White, fontWeight = FontWeight.Medium) }
                 }
-                if (style.xos && !blurOk) {
-                    Text(
-                        "⚠️ جهازك مطفّي «ضبابية النوافذ» (غالباً وضع توفير البطارية أو إعدادات الشركة). XOS ما راح يغبّش، فاللوحة ترجع تلقائياً للزجاج العادي (backdrop).",
-                        color = Color(0xFFFF9500), fontSize = 13.sp,
-                    )
+                if (!st.supported) {
+                    LiquidButton(
+                        onClick = { recheck++ },
+                        backdrop = backdrop,
+                    ) { Text("إعادة الفحص", color = inkColor(dark), fontWeight = FontWeight.Medium) }
                 }
                 if (style.xos) {
                     SettingSlider("ضبابية XOS", pct(style.xosBlur), { style.xosBlur },
@@ -557,5 +567,49 @@ private fun AdvancedPage(
             tint = Color(0xFFFF3B30),
             modifier = Modifier.fillMaxWidth(),
         ) { Text("إعادة ضبط الزجاج والألوان", color = Color.White, fontWeight = FontWeight.Medium) }
+    }
+}
+
+/** حالة ضبابية النوافذ بالنظام */
+private class XosStatus(val supported: Boolean, val reason: String, val devOff: Boolean, val saver: Boolean) {
+    val canFix get() = devOff || saver
+}
+
+private fun xosBlurStatus(ctx: android.content.Context): XosStatus {
+    val wm = ctx.getSystemService(android.view.WindowManager::class.java)
+    val ok = android.os.Build.VERSION.SDK_INT >= 31 && wm?.isCrossWindowBlurEnabled == true
+    val devOff = try {
+        android.provider.Settings.Global.getInt(ctx.contentResolver, "disable_window_blurs", 0) == 1
+    } catch (_: Throwable) { false }
+    val saver = ctx.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+    val reason = when {
+        ok -> ""
+        devOff -> "السبب: خيار المطوّر «Disable window blurs» شغّال. اضغط «إصلاح»."
+        saver -> "السبب: وضع توفير البطارية شغّال. اضغط «إصلاح» وطفّيه."
+        else -> "السبب: جهازك أو نسخة النظام ما تدعم ضبابية النوافذ أصلاً (خاصية من الشركة، التطبيق ما يگدر يفعّلها)."
+    }
+    return XosStatus(ok, reason, devOff, saver)
+}
+
+private fun xosTryFix(ctx: android.content.Context, s: XosStatus) {
+    if (s.devOff) {
+        try {
+            android.provider.Settings.Global.putInt(ctx.contentResolver, "disable_window_blurs", 0)
+            return
+        } catch (_: Throwable) { }
+        android.widget.Toast.makeText(
+            ctx,
+            "طفّي «Disable window blurs» من خيارات المطوّر، أو امنح الصلاحية: adb shell pm grant ${ctx.packageName} android.permission.WRITE_SECURE_SETTINGS",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+        try {
+            ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Throwable) { }
+    } else if (s.saver) {
+        try {
+            ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Throwable) { }
     }
 }
