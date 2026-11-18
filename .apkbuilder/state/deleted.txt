@@ -23,5 +23,4 @@ app/src/main/res/drawable/ic_launcher_background.xml
 app/src/main/res/drawable/ic_launcher_monochrome.xml
 app/glassvolume.jks
 .gitignore
-gradle/wrapper/gradle-wrapper.properties
 gradlew.bat
