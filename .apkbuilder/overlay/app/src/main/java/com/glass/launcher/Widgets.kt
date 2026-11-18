@@ -40,7 +40,14 @@ fun ClockWidget(backdrop: Backdrop, modifier: Modifier = Modifier) {
         }
     }
     Column(modifier.glass(backdrop).padding(20.dp)) {
-        Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 56.sp)
+        val is24 = android.text.format.DateFormat.is24HourFormat(ctx)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(now.format(DateTimeFormatter.ofPattern(if (is24) "HH:mm" else "h:mm")), color = Color.White, fontSize = 56.sp)
+            if (!is24) Text(
+                now.format(DateTimeFormatter.ofPattern("a", Locale.getDefault())),
+                color = Color.White.copy(0.85f), fontSize = 20.sp, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+            )
+        }
         Text(now.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.getDefault())), color = Color.White.copy(0.85f), fontSize = 16.sp)
         Text("🔋 $battery%", color = Color.White.copy(0.85f), fontSize = 14.sp)
     }

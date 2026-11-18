@@ -1,6 +1,12 @@
 package com.glass.launcher
 
 import android.app.WallpaperManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -89,7 +95,7 @@ fun LauncherScreen() {
 
         AnimatedVisibility(drawer, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
             var query by remember { mutableStateOf("") }
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp).glass(backdrop, 36.dp).padding(16.dp)) {
+            Column(Modifier.fillMaxSize().glass(backdrop, 0.dp).background(Color.Black.copy(alpha = 0.35f)).statusBarsPadding().navigationBarsPadding().padding(16.dp)) {
                 TextField(
                     query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
                     placeholder = { Text("بحث", color = Color.White.copy(0.6f)) },
@@ -126,13 +132,25 @@ fun AppIcon(app: AppInfo, modifier: Modifier = Modifier, showLabel: Boolean = tr
     }
 }
 
-/** Real wallpaper if readable, otherwise a gradient (this is what the glass refracts). */
+/**
+ * The real wallpaper is shown by the system behind the transparent window (windowShowWallpaper).
+ * We also try to read its bitmap so the glass has something to refract. That needs "all files access" on Android 11+.
+ */
 @Composable
 fun Wallpaper(modifier: Modifier) {
     val ctx = LocalContext.current
-    val bmp = remember {
+    var tick by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) { tick++; onPauseOrDispose { } }
+    val bmp = remember(tick) {
         try { WallpaperManager.getInstance(ctx).drawable?.toBitmap()?.asImageBitmap() } catch (e: Exception) { null }
     }
-    if (bmp != null) Image(bmp, null, modifier, contentScale = ContentScale.Crop)
-    else Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF5B2A86), Color(0xFF1E88E5), Color(0xFF00C9A7)))))
+    LaunchedEffect(bmp == null) {
+        if (bmp == null && Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            Toast.makeText(ctx, "اسمح بالوصول لكل الملفات حتى يظهر تأثير الزجاج على الخلفية", Toast.LENGTH_LONG).show()
+            try {
+                ctx.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + ctx.packageName)))
+            } catch (e: Exception) { }
+        }
+    }
+    if (bmp != null) Image(bmp, null, modifier, contentScale = ContentScale.Crop) else Box(modifier)
 }
