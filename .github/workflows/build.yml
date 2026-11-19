@@ -4,12 +4,25 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+    paths:
+      - '*.zip'
+      - '.github/workflows/build.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          ZIP=$(ls *.zip | head -n 1)
+          echo "Using: $ZIP"
+          rm -rf _src && mkdir _src
+          unzip -q "$ZIP" -d _src
+          SETTINGS=$(find _src -maxdepth 3 \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "settings.gradle not found in zip"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
 
       - uses: actions/setup-java@v4
         with:
@@ -21,13 +34,14 @@ jobs:
           gradle-version: 8.9
 
       - name: Build
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleDebug --no-daemon
 
       - name: Extract dex files
         run: |
           mkdir -p out
-          unzip -o app/build/outputs/apk/debug/app-debug.apk 'classes*.dex' -d out
-          cp README.md out/ || true
+          unzip -o "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" 'classes*.dex' -d out
+          cp "$PROJECT_DIR/README.md" out/ 2>/dev/null || true
           ls -la out
 
       - uses: actions/upload-artifact@v4
