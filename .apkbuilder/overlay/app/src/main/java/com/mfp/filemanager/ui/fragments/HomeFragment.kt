@@ -95,7 +95,7 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        binding.swipeRefresh.isEnabled = true
+        binding.swipeRefresh.isEnabled = false // pull-to-refresh removed
         binding.swipeRefresh.isRefreshing = false
     }
 

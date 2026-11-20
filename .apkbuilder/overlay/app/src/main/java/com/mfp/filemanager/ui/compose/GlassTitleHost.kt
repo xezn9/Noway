@@ -164,9 +164,15 @@ fun GlassTitleOverlay(backdrop: Backdrop, modifier: Modifier = Modifier) {
         }
     }
 
-    Box(modifier.fillMaxSize()) {
-        for (p in GlassTitleState.proxies) {
-            key(p) { GlassTitle(p, backdrop) }
+    // Positions are absolute left/top pixels: force LTR, otherwise (RTL languages) Compose starts
+    // every capsule at the right edge and the title ends up shifted / cut off.
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
+    ) {
+        Box(modifier.fillMaxSize()) {
+            for (p in GlassTitleState.proxies) {
+                key(p) { GlassTitle(p, backdrop) }
+            }
         }
     }
 }
