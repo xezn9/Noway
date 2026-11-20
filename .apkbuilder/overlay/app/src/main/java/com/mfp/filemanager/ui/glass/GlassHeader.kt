@@ -18,6 +18,11 @@ import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnAttach
+import com.google.android.material.appbar.MaterialToolbar
+import com.mfp.filemanager.ui.compose.GlassTitleState
+import com.mfp.filemanager.ui.util.Immersive
 import androidx.core.widget.NestedScrollView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -37,6 +42,10 @@ object GlassHeader {
 
         header.background = GlassHeaderDrawable(bg)
         ViewCompat.setTranslationZ(header, dp(ctx, 6f)) // draw above the scrolling content
+
+        // titles of toolbars are centred like the Home / Settings capsules
+        (header as? MaterialToolbar)?.isTitleCentered = true
+        keepClearOfCutout(header)
 
         styleTitle(header)
         header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> styleTitle(header) }
@@ -66,7 +75,11 @@ object GlassHeader {
 
     // ------------------------------------------------------------------ title pill
 
-    /** Wraps the title text in a small glass capsule (re-applied because Toolbar recreates its title view). */
+    /**
+     * The title TextView stays where it is (layout, pager swipes, selection-mode titles ...) but
+     * becomes invisible; GlassTitleOverlay draws a real Backdrop liquid-glass capsule + the text on top
+     * of it. Re-applied because Toolbar recreates its title view.
+     */
     private fun styleTitle(header: View) {
         if (header !is ViewGroup) return
         var tv: TextView? = null
@@ -75,12 +88,44 @@ object GlassHeader {
             if (c is TextView && c.text.isNotBlank()) { tv = c; break }
         }
         tv ?: return
-        if (tv.background is GlassButtonDrawable) return
+        if (GlassTitleState.isAttached(tv)) return
         val ctx = header.context
-        tv.background = GlassButtonDrawable(0xFF4DA3FF.toInt(), capsule = true, strength = 0.55f)
-        val h = dp(ctx, 16f).toInt()
-        val v = dp(ctx, 6f).toInt()
+        tv.background = null
+        val h = dp(ctx, 18f).toInt()
+        val v = dp(ctx, 7f).toInt()
         tv.setPadding(h, v, h, v)
+        tv.alpha = 0f // the overlay draws it
+        GlassTitleState.attach(tv)
+    }
+
+    // ------------------------------------------------------------------ camera cut-out
+
+    /** Full screen: nothing pushes the header below the camera hole any more, so do it ourselves. */
+    private fun keepClearOfCutout(header: View) {
+        val baseTop = header.paddingTop
+        val baseHeight = header.layoutParams?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+        var applied = -1
+
+        fun setTop(top: Int) {
+            if (top == applied) return
+            applied = top
+            header.setPadding(header.paddingLeft, baseTop + top, header.paddingRight, header.paddingBottom)
+            val lp = header.layoutParams
+            if (lp != null && baseHeight > 0) { // fixed height (Toolbar): grow by the same amount
+                lp.height = baseHeight + top
+                header.layoutParams = lp
+            }
+        }
+
+        setTop(Immersive.topInset)
+        ViewCompat.setOnApplyWindowInsetsListener(header) { _, insets ->
+            setTop(insets.getInsets(WindowInsetsCompat.Type.displayCutout()).top)
+            insets
+        }
+        header.doOnAttach {
+            ViewCompat.getRootWindowInsets(it)
+                ?.getInsets(WindowInsetsCompat.Type.displayCutout())?.top?.let { top -> setTop(top) }
+        }
     }
 
     // ------------------------------------------------------------------ content under the header
@@ -135,36 +180,30 @@ object GlassHeader {
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 }
 
-/** Frosted tint on top, melting into the page towards the bottom (no hard edge). */
+/**
+ * Soft fade only: the page colour melts from the top edge into the content below. The glass
+ * itself (title capsule) is the real Backdrop one drawn by GlassTitleOverlay.
+ */
 class GlassHeaderDrawable(private val bg: Int) : Drawable() {
     private val fill = Paint()
-    private val sheen = Paint()
 
     override fun onBoundsChange(b: android.graphics.Rect) {
         super.onBoundsChange(b)
         if (b.isEmpty) return
-        val glass = ColorUtils.blendARGB(ColorUtils.blendARGB(bg, Color.WHITE, 0.05f), 0xFF4DA3FF.toInt(), 0.06f)
-        val t = b.top.toFloat()
-        val bt = b.bottom.toFloat()
         fill.shader = LinearGradient(
-            0f, t, 0f, bt,
+            0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
             intArrayOf(
-                ColorUtils.setAlphaComponent(glass, 0xF4),
-                ColorUtils.setAlphaComponent(glass, 0xDC),
-                ColorUtils.setAlphaComponent(bg, 0x66),
+                ColorUtils.setAlphaComponent(bg, 0xEE),
+                ColorUtils.setAlphaComponent(bg, 0xC8),
+                ColorUtils.setAlphaComponent(bg, 0x55),
                 ColorUtils.setAlphaComponent(bg, 0x00)
             ),
             floatArrayOf(0f, 0.5f, 0.82f, 1f), Shader.TileMode.CLAMP
-        )
-        sheen.shader = LinearGradient(
-            0f, t, 0f, t + b.height() * 0.5f,
-            Color.argb(0x1C, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP
         )
     }
 
     override fun draw(canvas: Canvas) {
         canvas.drawRect(bounds, fill)
-        canvas.drawRect(bounds, sheen)
     }
 
     override fun setAlpha(alpha: Int) = Unit

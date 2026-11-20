@@ -28,12 +28,24 @@
             android:focusable="false"
             android:visibility="gone" />
 
-        <ImageView
-            android:id="@+id/img_icon"
+        <FrameLayout
             android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="File Icon"
-            android:src="@drawable/ic_folder_24" />
+            android:layout_height="48dp">
+
+            <ImageView
+                android:id="@+id/img_icon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="File Icon"
+                android:src="@drawable/ic_folder_24" />
+
+            <!-- Folders: real Backdrop liquid glass (ui/compose/LiquidFolderIcon) -->
+            <androidx.compose.ui.platform.ComposeView
+                android:id="@+id/compose_folder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="0dp"

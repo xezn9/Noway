@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         super.onCreate(savedInstanceState)
+        com.mfp.filemanager.ui.util.Immersive.apply(this) // full screen: no status bar, no nav bar
 
         // Check Permissions
         try {
@@ -590,6 +591,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) com.mfp.filemanager.ui.util.Immersive.hideBars(this)
     }
 
     override fun onDestroy() {

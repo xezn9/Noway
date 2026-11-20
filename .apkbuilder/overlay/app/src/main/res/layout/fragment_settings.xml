@@ -72,14 +72,11 @@
             android:textColor="?attr/colorPrimary"
             android:textStyle="bold" />
 
-        <com.google.android.material.switchmaterial.SwitchMaterial
+        <com.mfp.filemanager.ui.views.LiquidSwitchView
             android:id="@+id/switch_swipe_nav"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="24dp"
-            android:paddingVertical="16dp"
-            android:text="Swipe Navigation"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
+            android:text="Swipe Navigation" />
 
         <!-- Privacy Section -->
         <View
@@ -99,13 +96,11 @@
             android:textColor="?attr/colorPrimary"
             android:textStyle="bold" />
 
-        <com.google.android.material.switchmaterial.SwitchMaterial
+        <com.mfp.filemanager.ui.views.LiquidSwitchView
             android:id="@+id/switch_hidden_files"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="24dp"
-            android:text="Show Hidden Files"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
+            android:text="Show Hidden Files" />
 
 
 
@@ -197,14 +192,11 @@
             android:textColor="?attr/colorPrimary"
             android:textStyle="bold" />
 
-        <com.google.android.material.switchmaterial.SwitchMaterial
+        <com.mfp.filemanager.ui.views.LiquidSwitchView
             android:id="@+id/switch_auto_update"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="24dp"
-            android:paddingVertical="16dp"
-            android:text="Automatic Check"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
+            android:text="Automatic Check" />
 
         <LinearLayout
             android:layout_width="match_parent"

@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import coil.dispose
 import coil.load
 import coil.request.CachePolicy
 import coil.request.videoFrameMicros
@@ -96,6 +97,17 @@ class FileListAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         init {
+            // Folder icon = real Backdrop liquid glass (one tiny Compose view per row)
+            val dark = com.mfp.filemanager.ui.util.Immersive.isDarkTheme(binding.root.context)
+            binding.composeFolder.apply {
+                setViewCompositionStrategy(
+                    androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+                )
+                setContent {
+                    com.mfp.filemanager.ui.compose.LiquidFolderIcon(dark = dark)
+                }
+            }
+
             binding.layoutMain.setOnClickListener {
                 val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
@@ -204,8 +216,18 @@ class FileListAdapter(
                binding.textSize.text = Formatter.formatFileSize(binding.root.context, file.size)
             }
 
-            // Liquid glass badge / glass-framed thumbnail (see ui/glass)
-            com.mfp.filemanager.ui.glass.GlassFileIcon.bind(binding.imgIcon, file, thumbnailSeed)
+            if (file.isDirectory) {
+                // folders: Backdrop liquid glass (Compose)
+                binding.imgIcon.dispose()
+                binding.imgIcon.setImageDrawable(null)
+                binding.imgIcon.visibility = View.GONE
+                binding.composeFolder.visibility = View.VISIBLE
+            } else {
+                binding.composeFolder.visibility = View.GONE
+                binding.imgIcon.visibility = View.VISIBLE
+                // Liquid glass badge / glass-framed thumbnail (see ui/glass)
+                com.mfp.filemanager.ui.glass.GlassFileIcon.bind(binding.imgIcon, file, thumbnailSeed)
+            }
         }
     }
 
