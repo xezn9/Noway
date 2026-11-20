@@ -98,15 +98,7 @@ class FileListAdapter(
 
         init {
             // Folder icon = real Backdrop liquid glass (one tiny Compose view per row)
-            val dark = com.mfp.filemanager.ui.util.Immersive.isDarkTheme(binding.root.context)
-            binding.composeFolder.apply {
-                setViewCompositionStrategy(
-                    androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-                )
-                setContent {
-                    com.mfp.filemanager.ui.compose.LiquidFolderIcon(dark = dark)
-                }
-            }
+            setupFolderIcon()
 
             binding.layoutMain.setOnClickListener {
                 val position = bindingAdapterPosition
@@ -174,6 +166,17 @@ class FileListAdapter(
                     }
                     false
                 }
+            }
+        }
+
+        private fun setupFolderIcon() {
+            binding.composeFolder.setViewCompositionStrategy(
+                androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+            )
+            binding.composeFolder.setContent {
+                com.mfp.filemanager.ui.compose.LiquidFolderIcon(
+                    dark = com.mfp.filemanager.ui.util.Immersive.isDarkTheme(binding.root.context)
+                )
             }
         }
 
