@@ -14,7 +14,11 @@ import android.graphics.drawable.Drawable
 import androidx.core.graphics.ColorUtils
 
 /** Round liquid-glass button background (tinted body, inner light, gloss, rim). */
-class GlassButtonDrawable(private val tint: Int) : Drawable() {
+class GlassButtonDrawable(
+    private val tint: Int,
+    private val capsule: Boolean = false,
+    private val strength: Float = 1f
+) : Drawable() {
     private val light = ColorUtils.blendARGB(tint, Color.WHITE, 0.45f)
     private val deep = ColorUtils.blendARGB(tint, Color.BLACK, 0.25f)
     private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(0x35, 0, 0, 0) }
@@ -32,18 +36,19 @@ class GlassButtonDrawable(private val tint: Int) : Drawable() {
         if (b.isEmpty) return
         val w = b.width().toFloat()
         val h = b.height().toFloat()
-        val pad = w * 0.06f
+        val pad = minOf(w, h) * 0.06f
         r.set(b.left + pad, b.top + pad, b.right - pad, b.bottom - pad)
         dy = w * 0.03f
         body.reset()
-        body.addOval(r, Path.Direction.CW)
+        if (capsule) body.addRoundRect(r, r.height() / 2f, r.height() / 2f, Path.Direction.CW)
+        else body.addOval(r, Path.Direction.CW)
         val cx = r.centerX()
         fill.shader = LinearGradient(
             cx, r.top, cx, r.bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(light, 0xE0),
-                ColorUtils.setAlphaComponent(tint, 0xB4),
-                ColorUtils.setAlphaComponent(deep, 0xC8)
+                ColorUtils.setAlphaComponent(light, (0xE0 * strength).toInt()),
+                ColorUtils.setAlphaComponent(tint, (0xB4 * strength).toInt()),
+                ColorUtils.setAlphaComponent(deep, (0xC8 * strength).toInt())
             ),
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP
         )

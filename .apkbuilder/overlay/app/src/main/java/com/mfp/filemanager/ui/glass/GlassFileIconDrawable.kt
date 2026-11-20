@@ -29,7 +29,7 @@ class GlassFileIconDrawable(
     extension: String? = null
 ) : Drawable() {
 
-    private val label: String = (kind.label ?: extension ?: "").uppercase().take(4)
+    private val label: String = (if (kind == FileKind.FOLDER) "" else (kind.label ?: extension ?: "")).uppercase().take(4)
 
     private val tint = kind.tint
     private val light = ColorUtils.blendARGB(tint, Color.WHITE, 0.5f)
@@ -75,6 +75,8 @@ class GlassFileIconDrawable(
     private var shadowDy = 0f
     private val iosBack = Paint(Paint.ANTI_ALIAS_FLAG)
     private val iosFront = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val folderBack = Path()
+    private val ir = RectF() // inner rect where the iOS folder is drawn
     private val iosLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private var hasFold = false
     private var hasFront = false
@@ -99,18 +101,27 @@ class GlassFileIconDrawable(
 
         when (kind.shape) {
             GlassShape.FOLDER -> {
+                // tidy glass plate (same for every folder) ...
+                body.addRoundRect(r, rw * 0.30f, rw * 0.30f, Path.Direction.CW)
+                // ... with an iOS-style folder inside it
+                val i = rw * 0.19f
+                ir.set(r.left + i, r.top + i * 0.95f, r.right - i, r.bottom - i * 0.95f)
+                val iw = ir.width()
+                val ih = ir.height()
                 val pts = listOf(
-                    PointF(r.left, r.top + rh * 0.10f),
-                    PointF(r.left + rw * 0.40f, r.top + rh * 0.10f),
-                    PointF(r.left + rw * 0.50f, r.top + rh * 0.24f),
-                    PointF(r.right, r.top + rh * 0.24f),
-                    PointF(r.right, r.bottom),
-                    PointF(r.left, r.bottom)
+                    PointF(ir.left, ir.top + ih * 0.06f),
+                    PointF(ir.left + iw * 0.40f, ir.top + ih * 0.06f),
+                    PointF(ir.left + iw * 0.50f, ir.top + ih * 0.22f),
+                    PointF(ir.right, ir.top + ih * 0.22f),
+                    PointF(ir.right, ir.bottom),
+                    PointF(ir.left, ir.bottom)
                 )
-                body.set(roundedPolygon(pts, rw * 0.13f))
-                val fr = RectF(r.left, r.top + rh * 0.38f, r.right, r.bottom)
+                folderBack.set(roundedPolygon(pts, iw * 0.16f))
                 front.reset()
-                front.addRoundRect(fr, rw * 0.13f, rw * 0.13f, Path.Direction.CW)
+                front.addRoundRect(
+                    RectF(ir.left, ir.top + ih * 0.36f, ir.right, ir.bottom),
+                    iw * 0.16f, iw * 0.16f, Path.Direction.CW
+                )
                 hasFront = true
             }
             GlassShape.PAGE -> {
@@ -152,14 +163,12 @@ class GlassFileIconDrawable(
         val cx = r.centerX()
         if (kind.shape == GlassShape.FOLDER) {
             // iOS-style folder: solid two-tone blue, lighter front panel, thin top highlight
-            iosBack.shader = LinearGradient(cx, r.top, cx, r.bottom,
+            iosBack.shader = LinearGradient(cx, ir.top, cx, ir.bottom,
                 Color.parseColor("#3D9CF2"), Color.parseColor("#1F76D8"), Shader.TileMode.CLAMP)
-            val fTop = r.top + rh * 0.38f
-            iosFront.shader = LinearGradient(cx, fTop, cx, r.bottom,
+            iosFront.shader = LinearGradient(cx, ir.top + ir.height() * 0.36f, cx, ir.bottom,
                 Color.parseColor("#7CCBFF"), Color.parseColor("#47A9F7"), Shader.TileMode.CLAMP)
             iosLine.strokeWidth = maxOf(1f, w * 0.03f)
             iosLine.color = Color.argb(0xB0, 255, 255, 255)
-            return
         }
         fillPaint.shader = LinearGradient(
             cx, r.top, cx, r.bottom,
@@ -219,16 +228,6 @@ class GlassFileIconDrawable(
     override fun draw(canvas: Canvas) {
         if (bounds.isEmpty || r.isEmpty) return
 
-        if (kind.shape == GlassShape.FOLDER) {
-            canvas.save(); canvas.translate(0f, shadowDy); canvas.drawPath(body, shadowPaint); canvas.restore()
-            canvas.drawPath(body, iosBack)
-            canvas.drawPath(front, iosFront)
-            // thin light edge along the top of the front panel
-            val top = r.top + r.height() * 0.38f
-            val inset = r.width() * 0.13f
-            canvas.drawLine(r.left + inset, top + iosLine.strokeWidth / 2f, r.right - inset, top + iosLine.strokeWidth / 2f, iosLine)
-            return
-        }
 
         // soft drop shadow
         canvas.save()
@@ -248,8 +247,13 @@ class GlassFileIconDrawable(
         canvas.restore()
 
         if (hasFront) {
-            canvas.drawPath(front, frontPaint)
-            canvas.drawPath(front, frontRimPaint)
+            // iOS folder on top of the glass plate
+            canvas.save(); canvas.translate(0f, shadowDy * 0.6f); canvas.drawPath(folderBack, shadowPaint); canvas.restore()
+            canvas.drawPath(folderBack, iosBack)
+            canvas.drawPath(front, iosFront)
+            val edge = ir.top + ir.height() * 0.36f + iosLine.strokeWidth / 2f
+            val inset = ir.width() * 0.14f
+            canvas.drawLine(ir.left + inset, edge, ir.right - inset, edge, iosLine)
         }
 
         drawGlyph(canvas)

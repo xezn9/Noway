@@ -444,15 +444,15 @@ class HomeFragment : Fragment() {
             val bundle = Bundle().apply {
                 putString("path", android.os.Environment.getExternalStorageDirectory().absolutePath)
             }
-            findNavController().navigate(R.id.nav_file_browser, bundle)
+            findNavController().navigate(R.id.nav_file_browser, bundle, com.mfp.filemanager.ui.glass.NavAnims.options)
         }
 
         binding.btnViewRecentAll.setOnClickListener {
-            findNavController().navigate(R.id.nav_recent_files)
+            findNavController().navigate(R.id.nav_recent_files, null, com.mfp.filemanager.ui.glass.NavAnims.options)
         }
 
         binding.cardForecast.setOnClickListener {
-            findNavController().navigate(R.id.nav_storage_forecast)
+            findNavController().navigate(R.id.nav_storage_forecast, null, com.mfp.filemanager.ui.glass.NavAnims.options)
         }
     }
 

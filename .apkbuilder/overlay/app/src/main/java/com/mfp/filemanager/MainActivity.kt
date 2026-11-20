@@ -112,6 +112,23 @@ class MainActivity : AppCompatActivity() {
         }
         
         try {
+            // Liquid-glass headers + entrance animations for EVERY screen (also the pager tabs)
+            supportFragmentManager.registerFragmentLifecycleCallbacks(
+                object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+                    override fun onFragmentViewCreated(
+                        fm: androidx.fragment.app.FragmentManager,
+                        f: androidx.fragment.app.Fragment,
+                        v: View,
+                        savedInstanceState: Bundle?
+                    ) {
+                        if (f is androidx.navigation.fragment.NavHostFragment ||
+                            f is com.mfp.filemanager.ui.fragments.PlayerFragment) return
+                        com.mfp.filemanager.ui.glass.GlassHeader.install(v)
+                        com.mfp.filemanager.ui.glass.PageAnimations.play(v)
+                    }
+                }, true
+            )
+
             binding = ActivityMainBinding.inflate(layoutInflater)
             // NOTE: binding.root is hosted inside Compose (see setContent below) so the backdrop can capture it
 
