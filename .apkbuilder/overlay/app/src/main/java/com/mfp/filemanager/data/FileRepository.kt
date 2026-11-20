@@ -1,0 +1,1242 @@
+package com.mfp.filemanager.data
+
+import com.mfp.filemanager.data.trash.TrashManager
+import com.mfp.filemanager.data.trash.TrashedFile
+import com.mfp.filemanager.data.archive.ArchiveManager
+
+import android.content.ContentResolver
+import android.content.Context
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.os.StatFs
+import android.provider.MediaStore
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+
+import android.media.MediaScannerConnection
+import android.app.usage.StorageStatsManager
+import android.os.Process
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.io.FileReader
+import java.io.FileWriter
+
+data class StorageSnapshot(
+    val timestamp: Long,
+    val totalBytes: Long,
+    val usedBytes: Long
+)
+
+data class StorageVolumeInfo(
+    val file: File,
+    val name: String
+)
+
+class FileRepository(private val context: Context) {
+
+    suspend fun getFilesFromPath(path: String): List<FileModel> = withContext(Dispatchers.IO) {
+        val directory = File(path)
+        if (!directory.exists() || !directory.isDirectory) {
+            return@withContext emptyList()
+        }
+
+        val files = directory.listFiles()
+        val mimeMap = android.webkit.MimeTypeMap.getSingleton()
+        files?.mapNotNull { file ->
+            val ext = file.extension.lowercase()
+            val mimeType = if (file.isFile) {
+                mimeMap.getMimeTypeFromExtension(ext)
+            } else null
+            val itemCount = if (file.isDirectory) file.list()?.size ?: 0 else 0
+            FileModel(
+                id = file.hashCode().toLong(), // Simple ID
+                name = file.name,
+                path = file.path,
+                size = if (file.isFile) file.length() else 0,
+                dateModified = file.lastModified(),
+                mimeType = mimeType,
+                type = determineFileType(mimeType, file.name),
+                isDirectory = file.isDirectory,
+                itemCount = itemCount
+            )
+        }?.sortedWith(compareBy({ !it.isDirectory }, { it.name })) ?: emptyList()
+    }
+
+    @Suppress("DEPRECATION")
+    suspend fun calculateStorageForecast(): String = withContext(Dispatchers.IO) {
+        try {
+            val totalBytes = Environment.getExternalStorageDirectory().totalSpace
+            val freeBytes = Environment.getExternalStorageDirectory().freeSpace
+
+            // Calculate usage in the last 30 days
+            var recentUsageBytes = getAverageDailyUsageBytes() * 30
+            
+            // Fallback for fresh installs or no usage data: Assume 50MB/day usage
+            if (recentUsageBytes <= 0) {
+                 recentUsageBytes = 50L * 1024 * 1024 * 30
+            }
+
+            val dailyRate = recentUsageBytes / 30f
+            
+            // Absolute safety fallback
+            if (dailyRate <= 0) return@withContext "Analysing..."
+
+            val daysUntilFull = (freeBytes / dailyRate).toLong()
+            
+            val calendar = java.util.Calendar.getInstance()
+            calendar.add(java.util.Calendar.DAY_OF_YEAR, daysUntilFull.toInt())
+            
+            val dateFormat = java.text.SimpleDateFormat("yyyy", java.util.Locale.getDefault())
+            
+            return@withContext "Full by ${dateFormat.format(calendar.time)}"
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext "Analysing..."
+        }
+    }
+    
+    private val trashManager = TrashManager(context)
+
+    suspend fun deleteFile(path: String): Boolean = trashManager.moveToTrash(File(path))
+
+    suspend fun deleteFilesBatch(paths: List<String>, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        val files = paths.map { File(it) }
+        trashManager.moveToTrashBatch(files, onProgress)
+    }
+
+    suspend fun copyFiles(sourcePaths: List<String>, destPath: String, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        var successCount = 0
+        val total = sourcePaths.size
+        sourcePaths.forEachIndexed { index, path ->
+            if (copyFile(path, destPath)) {
+                successCount++
+            }
+            onProgress?.invoke((index + 1).toFloat() / total)
+        }
+        successCount == total
+    }
+
+    suspend fun moveFiles(sourcePaths: List<String>, destPath: String, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        var successCount = 0
+        val total = sourcePaths.size
+        sourcePaths.forEachIndexed { index, path ->
+            if (moveFile(path, destPath)) {
+                successCount++
+            }
+            onProgress?.invoke((index + 1).toFloat() / total)
+        }
+        successCount == total
+    }
+
+    suspend fun getTrashedFiles(): List<TrashedFile> = trashManager.getTrashedFiles()
+
+    suspend fun restoreFile(trashedFile: TrashedFile): Boolean = trashManager.restoreFromTrash(trashedFile)
+
+    suspend fun restoreFilesBatch(trashedFiles: List<TrashedFile>, onProgress: ((Float) -> Unit)? = null): Boolean = trashManager.restoreBatch(trashedFiles, onProgress)
+
+    suspend fun restoreAllFiles(): Boolean = trashManager.restoreAll()
+
+    fun getExternalVolumes(): List<StorageVolumeInfo> {
+        val volumes = mutableListOf<StorageVolumeInfo>()
+        val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as android.os.storage.StorageManager
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            storageManager.storageVolumes.forEach { volume ->
+                if (volume.isRemovable || !volume.isPrimary) {
+                    val dir = volume.directory
+                    if (dir != null && dir.exists() && dir.canRead()) {
+                        val name = volume.getDescription(context)
+                        volumes.add(StorageVolumeInfo(dir, name))
+                    }
+                }
+            }
+        } else {
+            storageManager.storageVolumes.forEach { volume ->
+                 if (volume.isRemovable || !volume.isPrimary) {
+                     val uuid = volume.uuid
+                     if (uuid != null) {
+                         val dir = File("/storage/$uuid")
+                         if (dir.exists() && dir.canRead()) {
+                             val name = volume.getDescription(context)
+                             volumes.add(StorageVolumeInfo(dir, name))
+                         }
+                     }
+                 }
+            }
+        }
+        
+        return volumes.distinctBy { it.file.absolutePath }
+    }
+
+    // Removed unused helper methods to keep code clean since we switched logic
+    suspend fun deleteFilePermanently(trashedFile: TrashedFile): Boolean = trashManager.deletePermanently(trashedFile)
+
+    suspend fun emptyTrash(): Boolean = trashManager.emptyTrash()
+
+    suspend fun cleanupExpiredTrash(days: Int): Int = trashManager.cleanupExpiredFiles(days)
+    
+    suspend fun getTrashSize(): Long = trashManager.getTrashedFiles().sumOf { it.size }
+
+    @Suppress("DEPRECATION")
+    suspend fun getEmptyFolders(): List<File> = withContext(Dispatchers.IO) {
+        val root = Environment.getExternalStorageDirectory()
+        val emptyFolders = mutableListOf<File>()
+        try {
+            // Increased depth for more thorough cleanup
+            scanForEmptyFolders(root, emptyFolders, 0)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        emptyFolders
+    }
+
+    @Suppress("DEPRECATION")
+    suspend fun getJunkSize(): Long = withContext(Dispatchers.IO) {
+        var size: Long = 0
+        try {
+            val extensions = listOf("%.tmp", "%.temp", "%.log", "%thumbs.db", "%.ds_store")
+            val selection = extensions.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" }
+            val selectionArgs = extensions.toTypedArray()
+            
+            val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+            val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    size = cursor.getLong(0)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        size
+    }
+
+    @Suppress("DEPRECATION")
+    suspend fun clearJunk(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val root = Environment.getExternalStorageDirectory()
+            val junkFiles = mutableListOf<File>()
+            scanForJunkFiles(root, junkFiles, 0)
+            
+            var allDeleted = true
+            junkFiles.forEach { file ->
+                if (file.exists()) {
+                    // Try simple delete first
+                    if (!file.delete()) {
+                        allDeleted = false
+                    }
+                }
+            }
+            allDeleted
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private fun scanForJunkFiles(directory: File, list: MutableList<File>, depth: Int) {
+        if (depth > 8) return // Increased depth
+        val files = directory.listFiles() ?: return
+
+        for (file in files) {
+            if (file.isDirectory) {
+                // Skip sensitive or system folders
+                if (file.name.equals("Android", ignoreCase = true) || 
+                    file.name.equals("DCIM", ignoreCase = true) ||
+                    file.name.equals("Pictures", ignoreCase = true) ||
+                    file.name.startsWith(".")) {
+                    continue
+                }
+                scanForJunkFiles(file, list, depth + 1)
+            } else {
+                if (isJunkFile(file)) {
+                    list.add(file)
+                }
+            }
+        }
+    }
+
+    private fun isJunkFile(file: File): Boolean {
+        val name = file.name.lowercase()
+        return name.endsWith(".tmp") || 
+               name.endsWith(".temp") || 
+               name.endsWith(".log") || 
+               name.startsWith("thumb") || // classic thumb data
+               name == "thumbs.db" ||
+               name == ".ds_store"
+    }
+
+    // Deprecated/Unused standard cache methods
+    suspend fun getCacheSize_Legacy(): Long = 0
+    suspend fun clearCache_Legacy(): Boolean = false
+
+    private fun getDirSize(dir: File): Long {
+        var size: Long = 0
+        if (dir.exists() && dir.isDirectory) {
+            dir.listFiles()?.forEach { file ->
+                size += if (file.isDirectory) getDirSize(file) else file.length()
+            }
+        }
+        return size
+    }
+
+    private fun deleteDirContents(dir: File) {
+        if (dir.exists() && dir.isDirectory) {
+            dir.listFiles()?.forEach { file ->
+                file.deleteRecursively()
+            }
+        }
+    }
+
+    private fun scanForEmptyFolders(directory: File, list: MutableList<File>, depth: Int) {
+        if (depth > 10) return // Increased depth
+        val files = directory.listFiles()
+        if (files == null) return
+
+        if (files.isEmpty() && directory.name != "Android") { // Don't delete Android system folder
+            list.add(directory)
+        } else {
+            for (file in files) {
+                if (file.isDirectory) {
+                    scanForEmptyFolders(file, list, depth + 1)
+                }
+            }
+        }
+    }
+
+    suspend fun getLargeFiles(thresholdBytes: Long = 100 * 1024 * 1024): List<FileModel> = withContext(Dispatchers.IO) {
+        val files = mutableListOf<FileModel>()
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+        val selection = "${MediaStore.Files.FileColumns.SIZE} > ?"
+        val selectionArgs = arrayOf(thresholdBytes.toString())
+        val sortOrder = "${MediaStore.Files.FileColumns.SIZE} DESC"
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+        
+        context.contentResolver.query(queryUri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+             files.addAll(mapCursorToFiles(cursor))
+        }
+        files
+    }
+
+    suspend fun getRecentFiles(limit: Int = 20, showHidden: Boolean = false): List<FileModel> = withContext(Dispatchers.IO) {
+        val files = mutableListOf<FileModel>()
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+
+        // val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} != ${MediaStore.Files.FileColumns.MEDIA_TYPE_NONE}"
+        // Removing filter to include ALL file types (Docs, APKs, etc.)
+        val selection: String? = null
+        val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val queryArgs = Bundle().apply {
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, null)
+                putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Files.FileColumns.DATE_MODIFIED))
+                putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, limit * 10) // Fetch more to allow for filtering
+            }
+            context.contentResolver.query(queryUri, projection, queryArgs, null)?.use { cursor ->
+                files.addAll(mapCursorToFiles(cursor))
+            }
+        } else {
+            context.contentResolver.query(
+                queryUri,
+                projection,
+                selection,
+                null,
+                "$sortOrder LIMIT ${limit * 10}" // Fetch more to allow for filtering
+            )?.use { cursor ->
+                files.addAll(mapCursorToFiles(cursor))
+            }
+        }
+        
+        // Filter out very small/empty system files if needed, but show OTHERS/UNKNOWN if they exist
+        // Respect showHidden parameter
+        return@withContext files.filter { it.size > 0 && (showHidden || !it.name.startsWith(".")) && !it.isDirectory }.take(limit)
+    }
+
+    suspend fun searchFiles(
+        query: String,
+        fileType: FileType? = null,
+        minSize: Long? = null,
+        maxDaysAgo: Int? = null,
+        pathPrefix: String? = null // when set, only files inside this folder (and its sub-folders)
+    ): List<FileModel> = withContext(Dispatchers.IO) {
+        val files = mutableListOf<FileModel>()
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+
+        val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        var selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?"
+        val selectionArgs = mutableListOf("%$query%")
+
+        if (!pathPrefix.isNullOrEmpty()) {
+            selection += " AND ${MediaStore.Files.FileColumns.DATA} LIKE ?"
+            selectionArgs.add(pathPrefix.trimEnd('/') + "/%")
+        }
+
+        if (fileType != null && fileType != FileType.UNKNOWN && fileType != FileType.OTHERS) {
+            val (typeSelection, typeArgs) = getSelectionForCategory(fileType)
+            selection += " AND $typeSelection"
+            typeArgs?.let { selectionArgs.addAll(it) }
+        }
+
+        if (minSize != null && minSize > 0) {
+            selection += " AND ${MediaStore.Files.FileColumns.SIZE} >= ?"
+            selectionArgs.add(minSize.toString())
+        }
+
+        if (maxDaysAgo != null && maxDaysAgo > 0) {
+            val timeThreshold = (System.currentTimeMillis() - (maxDaysAgo.toLong() * 24 * 60 * 60 * 1000)) / 1000
+            selection += " AND ${MediaStore.Files.FileColumns.DATE_MODIFIED} >= ?"
+            selectionArgs.add(timeThreshold.toString())
+        }
+
+        context.contentResolver.query(
+            queryUri, 
+            projection, 
+            selection, 
+            selectionArgs.toTypedArray(), 
+            sortOrder
+        )?.use { cursor ->
+            files.addAll(mapCursorToFiles(cursor))
+        }
+        
+        return@withContext files
+    }
+
+    suspend fun getFilesByCategory(category: FileType): List<FileModel> = withContext(Dispatchers.IO) {
+        val files = mutableListOf<FileModel>()
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+            MediaStore.Files.FileColumns.MIME_TYPE
+        )
+
+        val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+        
+        val queryUri: Uri
+        val selection: String?
+        val selectionArgs: Array<String>?
+
+        if (category == FileType.AUDIO) {
+            val audioProjection = projection + arrayOf(MediaStore.Audio.Media.ARTIST)
+            val audioUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            }
+            context.contentResolver.query(audioUri, audioProjection, null, null, sortOrder)?.use { cursor ->
+                files.addAll(mapCursorToFiles(cursor))
+            }
+            return@withContext files
+        }
+
+        if (category == FileType.DOWNLOAD && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            queryUri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            selection = null
+            selectionArgs = null
+        } else {
+            queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+            val (catSelection, catSelectionArgs) = getSelectionForCategory(category)
+            selection = catSelection
+            selectionArgs = catSelectionArgs
+        }
+
+        context.contentResolver.query(queryUri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+            files.addAll(mapCursorToFiles(cursor))
+        }
+        
+        return@withContext files
+    }
+    
+    private fun mapCursorToFiles(cursor: Cursor): List<FileModel> {
+        val files = mutableListOf<FileModel>()
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+        val pathColumn = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+        val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+        val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+        val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+
+        val artistColumn = cursor.getColumnIndex(MediaStore.Audio.AudioColumns.ARTIST)
+
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idColumn)
+            val name = cursor.getString(nameColumn) ?: "Unknown"
+            val path = if(pathColumn != -1) cursor.getString(pathColumn) ?: "" else ""
+            val size = cursor.getLong(sizeColumn)
+            val date = cursor.getLong(dateColumn) * 1000 // Convert seconds to milliseconds
+            val mimeType = cursor.getString(mimeColumn) ?: "*/*"
+            val artist = if (artistColumn != -1) cursor.getString(artistColumn) else null
+            
+            val isDir = (mimeType == "resource/folder" || mimeType == "vnd.android.cursor.dir/file") ||
+                        (if (path.isNotEmpty()) java.io.File(path).isDirectory else false)
+            files.add(FileModel(id, name, path, size, date, mimeType, determineFileType(mimeType, name), isDir, 0, artist))
+        }
+        return files
+    }
+
+    private fun getSelectionForCategory(category: FileType): Pair<String, Array<String>?> {
+        return when (category) {
+            FileType.IMAGE -> "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?" to arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString())
+            FileType.VIDEO -> "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?" to arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+            FileType.AUDIO -> "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?" to arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO.toString())
+            FileType.DOCUMENT -> {
+                val mimeTypes = arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain")
+                val selection = mimeTypes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE} = ?" }
+                "($selection)" to mimeTypes
+            }
+            FileType.APK -> "${MediaStore.Files.FileColumns.DATA} LIKE '%.apk'" to null
+            FileType.ARCHIVE -> {
+                 val mimeTypes = arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed")
+                 val selection = mimeTypes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE} = ?" }
+                 "($selection)" to mimeTypes
+            }
+            FileType.DOWNLOAD -> if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                "${MediaStore.Files.FileColumns.DATA} LIKE ?" to arrayOf("%/Download/%")
+            } else {
+                "1=0" to null
+            }
+            FileType.OTHERS -> {
+                // "Others" = NOT Image AND NOT Video AND NOT Audio
+                // This is a simplification.
+                val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} != ? AND ${MediaStore.Files.FileColumns.MEDIA_TYPE} != ? AND ${MediaStore.Files.FileColumns.MEDIA_TYPE} != ? AND ${MediaStore.Files.FileColumns.MEDIA_TYPE} != ?"
+                val args = arrayOf(
+                    MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+                    MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+                    MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO.toString(),
+                    MediaStore.Files.FileColumns.MEDIA_TYPE_NONE.toString()
+                )
+                selection to args
+            }
+            else -> "${MediaStore.Files.FileColumns.MEDIA_TYPE} != ${MediaStore.Files.FileColumns.MEDIA_TYPE_NONE}" to null
+        }
+    }
+
+    private fun determineFileType(mimeType: String?, name: String): FileType {
+        if (mimeType != null) {
+            when {
+                mimeType.startsWith("image/") -> return FileType.IMAGE
+                mimeType.startsWith("video/") -> return FileType.VIDEO
+                mimeType.startsWith("audio/") -> return FileType.AUDIO
+                mimeType == "application/vnd.android.package-archive" -> return FileType.APK
+                mimeType == "application/zip" || mimeType == "application/x-rar-compressed" || mimeType == "application/x-7z-compressed" -> return FileType.ARCHIVE
+                mimeType.startsWith("application/") || mimeType.startsWith("text/") -> {
+                     // Refine document check if needed, or allow it to fall through
+                     if (name.endsWith(".apk", true)) return FileType.APK
+                     return FileType.DOCUMENT
+                }
+            }
+        }
+
+        // Fallback to extension check
+        return when {
+            name.endsWith(".jpg", true) || name.endsWith(".jpeg", true) || name.endsWith(".png", true) || name.endsWith(".gif", true) || name.endsWith(".bmp", true) || name.endsWith(".webp", true) -> FileType.IMAGE
+            name.endsWith(".mp4", true) || name.endsWith(".mkv", true) || name.endsWith(".webm", true) || name.endsWith(".3gp", true) -> FileType.VIDEO
+            name.endsWith(".mp3", true) || name.endsWith(".wav", true) || name.endsWith(".m4a", true) || name.endsWith(".ogg", true) || name.endsWith(".flac", true) -> FileType.AUDIO
+            name.endsWith(".apk", true) -> FileType.APK
+            name.endsWith(".zip", true) || name.endsWith(".rar", true) || name.endsWith(".7z", true) -> FileType.ARCHIVE
+            name.endsWith(".pdf", true) || name.endsWith(".doc", true) || name.endsWith(".docx", true) || name.endsWith(".xls", true) || name.endsWith(".xlsx", true) || name.endsWith(".ppt", true) || name.endsWith(".pptx", true) || name.endsWith("txt", true) -> FileType.DOCUMENT
+            else -> FileType.OTHERS
+        }
+    }
+
+    private val archiveManager = ArchiveManager()
+
+    suspend fun extractArchive(sourcePath: String, destinationPath: String, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        archiveManager.extractArchive(File(sourcePath), File(destinationPath), onProgress)
+    }
+
+    @Suppress("DEPRECATION")
+    suspend fun getStorageInfo(): StorageInfo = withContext(Dispatchers.IO) {
+        try {
+            val path = Environment.getExternalStorageDirectory()
+            val stat = StatFs(path.path)
+            val blockSize = stat.blockSizeLong
+            val totalBlocks = stat.blockCountLong
+            val availableBlocks = stat.availableBlocksLong
+
+            val totalBytes = totalBlocks * blockSize
+            val freeBytes = availableBlocks * blockSize
+            val usedBytes = totalBytes - freeBytes
+
+            // Parallelize scanning
+            val appBytesDeferred = async { getAppSize() }
+            val docBytesDeferred = async { getDocumentSize() }
+            val archiveBytesDeferred = async { getArchiveSize() }
+            
+            var imageBytes = 0L
+            var videoBytes = 0L
+            var audioBytes = 0L
+            
+            // Try optimized query using StorageStatsManager first (API 26+)
+            var statsSuccess = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasUsageAccess()) {
+                try {
+                    val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
+                    val stats = storageStatsManager.queryExternalStatsForUser(android.os.storage.StorageManager.UUID_DEFAULT, Process.myUserHandle())
+                    imageBytes = stats.imageBytes
+                    videoBytes = stats.videoBytes
+                    audioBytes = stats.audioBytes
+                    statsSuccess = true
+                } catch (e: Exception) {
+                    android.util.Log.e("FileRepository", "queryExternalStatsForUser failed", e)
+                }
+            }
+            
+            if (!statsSuccess) {
+                val imgDef = async { getCategorySize(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE) }
+                val vidDef = async { getCategorySize(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) }
+                val audDef = async { getCategorySize(MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO) }
+                imageBytes = imgDef.await()
+                videoBytes = vidDef.await()
+                audioBytes = audDef.await()
+            }
+
+            val appBytes = appBytesDeferred.await()
+            val documentBytes = docBytesDeferred.await()
+            val archiveBytes = archiveBytesDeferred.await()
+            
+            val mediaSum = imageBytes + videoBytes + audioBytes + documentBytes + appBytes + archiveBytes
+            val otherBytes = if (usedBytes > mediaSum) usedBytes - mediaSum else 0L
+
+            // Log storage snapshot for AI analysis
+            com.mfp.filemanager.utils.StorageAnalysisLogger.logSnapshot(context, totalBytes, freeBytes)
+
+            StorageInfo(totalBytes, freeBytes, usedBytes, imageBytes, videoBytes, audioBytes, documentBytes, appBytes, archiveBytes, otherBytes)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            StorageInfo(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        }
+    }
+
+    private fun getAppSize(): Long {
+        var size: Long = 0
+        try {
+            val pm = context.packageManager
+            val installedApps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                pm.getInstalledApplications(0)
+            }
+            
+            // Check for Usage Access Permission (API 23+)
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            } else {
+                appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            }
+            val hasPermission = mode == android.app.AppOpsManager.MODE_ALLOWED
+
+            if (hasPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Optimized Calculation using StorageStatsManager (API 26+)
+                // Using queryStatsForUser instead of iterating through each package individually.
+                // This reduces N binder calls to 1, significantly decreasing the load on system_server.
+                val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
+                val userHandle = Process.myUserHandle()
+                val storageUuid = android.os.storage.StorageManager.UUID_DEFAULT // Internal Storage
+                
+                try {
+                    val stats = storageStatsManager.queryStatsForUser(storageUuid, userHandle)
+                    size = stats.appBytes
+                } catch (e: Exception) {
+                    // Critical Fallback: Avoid ANY binder calls in a loop.
+                    // Just use a simple File length check for the APKs. 
+                    // This is much faster and won't starve the binder pool.
+                    installedApps.forEach { appInfo ->
+                        val file = File(appInfo.sourceDir)
+                        if (file.exists()) size += file.length()
+                    }
+                }
+            } else {
+                     // Fallback: APK Size only
+                 installedApps.forEach { appInfo ->
+                    // Exclude System Apps unless they are updated (residing on /data)
+                    // System apps on /system do not consume user storage space.
+                    val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    val isUpdatedSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                    
+                    if (!isSystem || isUpdatedSystem) {
+                        val file = File(appInfo.sourceDir)
+                        if (file.exists()) {
+                             size += file.length()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return size
+    }
+
+    private fun getArchiveSize(): Long {
+        var size: Long = 0
+        val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+        val (selection, selectionArgs) = getSelectionForCategory(FileType.ARCHIVE)
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        try {
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    size = cursor.getLong(0)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return size
+    }
+
+    private fun getDocumentSize(): Long {
+        var size: Long = 0
+        val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+        
+        // Expanded Document Types
+        val mimeTypes = arrayOf(
+            "application/pdf", 
+            "application/msword", 
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // xlsx
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation", // pptx
+            "text/plain"
+        )
+        val selection = mimeTypes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE} = ?" }
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        try {
+            context.contentResolver.query(queryUri, projection, selection, mimeTypes, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    size = cursor.getLong(0)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return size
+    }
+
+    suspend fun renameFile(path: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val file = File(path)
+            val newFile = File(file.parent, newName)
+            if (newFile.exists()) return@withContext false
+            val success = file.renameTo(newFile)
+            if (success) {
+                scanFiles(listOf(path, newFile.absolutePath))
+            }
+            return@withContext success
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+    
+
+    suspend fun copyFile(sourcePath: String, destPath: String, onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        var destFile: File? = null
+        try {
+            android.util.Log.d("FileRepository", "copyFile: source=$sourcePath, dest=$destPath")
+            val sourceFile = File(sourcePath)
+            
+            if (!sourceFile.exists()) {
+                android.util.Log.e("FileRepository", "copyFile: Source file does not exist: $sourcePath")
+                return@withContext false
+            }
+            
+            var targetFile = File(destPath, sourceFile.name)
+            
+            // Auto-rename if exists
+            var counter = 1
+            val nameWithoutExt = sourceFile.nameWithoutExtension
+            val ext = sourceFile.extension.let { if (it.isNotEmpty()) ".$it" else "" }
+            
+            while (targetFile.exists()) {
+                targetFile = File(destPath, "$nameWithoutExt ($counter)$ext")
+                counter++
+            }
+            destFile = targetFile
+            
+            android.util.Log.d("FileRepository", "copyFile: Final destFile=${targetFile.absolutePath}, isDirectory=${sourceFile.isDirectory}")
+            
+            if (sourceFile.isDirectory) {
+                return@withContext copyDirectory(sourceFile, targetFile, onProgress)
+            } else {
+                val totalSize = sourceFile.length()
+                var bytesCopied = 0L
+                val bufferSize = 64 * 1024 // 64KB is generally optimal for Android
+                val buffer = ByteArray(bufferSize)
+                
+                sourceFile.inputStream().use { input ->
+                    targetFile.outputStream().use { output ->
+                        var bytes = input.read(buffer)
+                        while (bytes >= 0) {
+                            output.write(buffer, 0, bytes)
+                            bytesCopied += bytes
+                            onProgress?.invoke(bytesCopied, totalSize)
+                            bytes = input.read(buffer)
+                        }
+                    }
+                }
+                
+                scanFile(targetFile.absolutePath)
+                android.util.Log.d("FileRepository", "copyFile: Success! Copied $bytesCopied bytes")
+                return@withContext true
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileRepository", "copyFile: Exception", e)
+            // Cleanup partial file on failure
+            destFile?.let { if (it.exists()) it.deleteRecursively() }
+            return@withContext false
+        }
+    }
+    
+    private suspend fun copyDirectory(sourceDir: File, destDir: File, onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("FileRepository", "copyDirectory: ${sourceDir.absolutePath} -> ${destDir.absolutePath}")
+            
+            // Calculate total size for progress reporting
+            val totalSize = calculateDirectorySize(sourceDir)
+            var bytesCopied = 0L
+            
+            android.util.Log.d("FileRepository", "copyDirectory: Total size = $totalSize bytes")
+            
+            // Create destination directory
+            if (!destDir.mkdirs() && !destDir.exists()) {
+                android.util.Log.e("FileRepository", "copyDirectory: Failed to create destination directory")
+                return@withContext false
+            }
+            
+            // Copy all files and subdirectories
+            val result = copyDirectoryContents(sourceDir, destDir) { copiedBytes ->
+                bytesCopied += copiedBytes
+                onProgress?.invoke(bytesCopied, totalSize)
+            }
+            
+            if (result) {
+                scanFile(destDir.absolutePath)
+                android.util.Log.d("FileRepository", "copyDirectory: Success! Copied $bytesCopied bytes")
+            }
+            
+            return@withContext result
+        } catch (e: Exception) {
+            android.util.Log.e("FileRepository", "copyDirectory: Exception", e)
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+    
+    private suspend fun copyDirectoryContents(sourceDir: File, destDir: File, onBytesWritten: (Long) -> Unit): Boolean = withContext(Dispatchers.IO) {
+        val children = sourceDir.listFiles() ?: return@withContext false
+        
+        for (child in children) {
+            val destChild = File(destDir, child.name)
+            
+            if (child.isDirectory) {
+                // Recursively copy subdirectory
+                if (!destChild.mkdirs() && !destChild.exists()) {
+                    return@withContext false
+                }
+                if (!copyDirectoryContents(child, destChild, onBytesWritten)) {
+                    return@withContext false
+                }
+            } else {
+                // Copy file
+                val buffer = ByteArray(256 * 1024)
+                child.inputStream().use { input ->
+                    destChild.outputStream().use { output ->
+                        var bytes = input.read(buffer)
+                        while (bytes >= 0) {
+                            output.write(buffer, 0, bytes)
+                            onBytesWritten(bytes.toLong())
+                            bytes = input.read(buffer)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return@withContext true
+    }
+    
+    fun calculateDirectorySize(dir: File): Long {
+        var size = 0L
+        val files = dir.listFiles() ?: return 0L
+        
+        for (file in files) {
+            size += if (file.isDirectory) {
+                if (file.name != "." && file.name != "..") {
+                    calculateDirectorySize(file)
+                } else 0L
+            } else {
+                file.length()
+            }
+        }
+        
+        return size
+    }
+
+    suspend fun getTotalSize(paths: List<String>): Long = withContext(Dispatchers.IO) {
+        paths.sumOf { path ->
+            val file = File(path)
+            if (file.isDirectory) calculateDirectorySize(file) else file.length()
+        }
+    }
+
+    suspend fun moveFile(sourcePath: String, destPath: String, onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val sourceFile = File(sourcePath)
+            if (!sourceFile.exists()) return@withContext false
+
+            var destFile = File(destPath, sourceFile.name)
+
+            // Auto-rename logic for Move
+            var counter = 1
+            val nameWithoutExt = sourceFile.nameWithoutExtension
+            val ext = sourceFile.extension.let { if (it.isNotEmpty()) ".$it" else "" }
+            
+            while (destFile.exists()) {
+                destFile = File(destPath, "$nameWithoutExt ($counter)$ext")
+                counter++
+            }
+            
+            // Try atomic move first (fast move on same filesystem)
+            if (sourceFile.renameTo(destFile)) {
+                scanFile(sourcePath)
+                scanFile(destFile.absolutePath)
+                onProgress?.invoke(destFile.length(), destFile.length())
+                return@withContext true
+            }
+
+            // Fallback to Copy-Delete (Cross-partition or failed rename)
+            val copied = if (sourceFile.isDirectory) {
+                 copyDirectory(sourceFile, destFile, onProgress)
+            } else {
+                 copyFile(sourcePath, destFile.absolutePath, onProgress) // Use absolute path string for destination file
+            }
+
+            if (copied) {
+                // Delete Source
+                // We use deleteRecursively to handle directories
+                val deleted = sourceFile.deleteRecursively()
+                
+                if (deleted) {
+                    scanFile(sourcePath)
+                    // Explicitly scan parent dir of source to force update?
+                    scanFile(sourceFile.parentFile?.absolutePath ?: "")
+                } else {
+                    android.util.Log.e("FileRepository", "moveFile: Failed to delete source after copy: $sourcePath")
+                    // Try alternate delete?
+                    if (sourceFile.exists()) {
+                        // Attempt context delete if Java API fails (unlikely with MANAGE_EXTERNAL_STORAGE but possible)
+                        // For now we treat it as failure to Move completely
+                        // But we already copied... users might prefer knowing it exists in both than losing data.
+                        // We return false to indicate 'Move' failed (it became a Copy).
+                        return@withContext false 
+                    }
+                }
+                return@withContext true
+            }
+            return@withContext false
+
+        } catch (e: Exception) {
+            android.util.Log.e("FileRepository", "moveFile: Exception", e)
+            return@withContext false
+        }
+    }
+
+    suspend fun getStorageUsageHistory(): List<Long> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis() / 1000
+        val history = mutableListOf<Long>()
+        
+        val totalUsageNow = Environment.getExternalStorageDirectory().totalSpace - Environment.getExternalStorageDirectory().freeSpace
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        val intervals = listOf(30L, 22L, 15L, 7L)
+        val bucketSums = mutableListOf<Long>()
+
+        for (days in intervals) {
+            val threshold = now - (days * 24 * 60 * 60)
+            val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+            val selection = "${MediaStore.Files.FileColumns.DATE_MODIFIED} > ?"
+            val selectionArgs = arrayOf(threshold.toString())
+            
+            var sum = 0L
+            try {
+                context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        sum = cursor.getLong(0)
+                    }
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+            bucketSums.add(sum)
+        }
+
+        // history order: Past to Now
+        // intervals: 30, 22, 15, 7
+        // bucketSums matches intervals
+        for (added in bucketSums) {
+            val pastEstimate = (totalUsageNow - added).coerceAtLeast(0L)
+            history.add(pastEstimate)
+        }
+        history.add(totalUsageNow)
+        
+        history
+    }
+
+    suspend fun getAverageDailyUsageBytes(): Long = withContext(Dispatchers.IO) {
+        // Deprecated: This old method used file modification dates but ignored deletions.
+        // We now prefer using the snapshot history if available.
+        val history = getStorageHistory()
+        if (history.size >= 2) {
+            val first = history.first()
+            val last = history.last()
+            val durationDays = (last.timestamp - first.timestamp) / (1000f * 60 * 60 * 24)
+            if (durationDays >= 1.0) {
+                 val usedDiff = last.usedBytes - first.usedBytes
+                 // If usedDiff is negative, it means they deleted stuff. 
+                 // We return 0 or negative here? The purely mathematical average is better returned as is, 
+                 // but the UI might expect a positive "usage rate".
+                 // For legacy compatibility, we'll return a basic projection if positive, else 0.
+                 return@withContext if (usedDiff > 0) (usedDiff / durationDays).toLong() else 0L
+            }
+        }
+        
+        // Fallback to old inaccurate logic regarding "newly modified files" 
+        // just to have *something* if history is empty.
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+        val selection = "${MediaStore.Files.FileColumns.DATE_MODIFIED} > ?"
+        val selectionArgs = arrayOf((thirtyDaysAgo / 1000).toString())
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+        
+        var recentUsageBytes: Long = 0
+        try {
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    recentUsageBytes = cursor.getLong(0)
+                    // This logic is fundamentally flawed as it doesn't account for deletions, 
+                    // but we keep it as a fallback for cold start.
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        if (recentUsageBytes > 0) recentUsageBytes / 30 else 50 * 1024 * 1024 // 50MB default
+    }
+
+    // -------------------------------------------------------------
+    // AI Storage Forecast Data Management
+    // -------------------------------------------------------------
+
+    private val historyFile by lazy { File(context.filesDir, "storage_history.json") }
+    private val gson by lazy { Gson() }
+
+    suspend fun recordStorageSnapshot(info: StorageInfo) = withContext(Dispatchers.IO) {
+        try {
+            val history = getStorageHistory().toMutableList()
+            val now = System.currentTimeMillis()
+            
+            // Avoid spamming snapshots: only 1 per 6 hours unless significant change?
+            // For now, simple time check: if last snapshot was < 6 hours ago, skip, 
+            // UNLESS it's the very first one today.
+            if (history.isNotEmpty()) {
+                val last = history.last()
+                val diff = now - last.timestamp
+                if (diff < 6 * 60 * 60 * 1000) { 
+                    return@withContext // Too soon
+                }
+            }
+
+            // Pruning: Keep last 60 days
+            val sixtyDaysAgo = now - (60L * 24 * 60 * 60 * 1000)
+            history.removeAll { it.timestamp < sixtyDaysAgo }
+
+            history.add(StorageSnapshot(now, info.totalBytes, info.usedBytes))
+            
+            FileWriter(historyFile).use { writer ->
+                gson.toJson(history, writer)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun getStorageHistory(): List<StorageSnapshot> = withContext(Dispatchers.IO) {
+        if (!historyFile.exists()) return@withContext emptyList()
+        try {
+            FileReader(historyFile).use { reader ->
+                val type = object : TypeToken<List<StorageSnapshot>>() {}.type
+                return@withContext gson.fromJson<List<StorageSnapshot>>(reader, type) ?: emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext emptyList()
+        }
+    }
+    
+    // Helper to inject fake data for testing
+    suspend fun debugInjectFakeHistory() = withContext(Dispatchers.IO) {
+        val history = mutableListOf<StorageSnapshot>()
+        val info = getStorageInfo()
+        val now = System.currentTimeMillis()
+        val total = info.totalBytes
+        
+        // Generate 30 days of history, growing by 200MB/day
+        // Current used is 'info.usedBytes'. We work backwards.
+        var currentUsed = info.usedBytes
+        val dailyGrowth = 200L * 1024 * 1024 
+        
+        for (i in 0 until 30) {
+            val time = now - (i * 24 * 60 * 60 * 1000L)
+            history.add(0, StorageSnapshot(time, total, currentUsed)) // Prepend
+            currentUsed -= dailyGrowth
+            if (currentUsed < 0) currentUsed = 100 * 1024 * 1024 // Min 100MB
+        }
+        
+        FileWriter(historyFile).use { writer ->
+            gson.toJson(history, writer)
+        }
+    }
+
+
+    fun hasUsageAccess(): Boolean {
+        return try {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            } else {
+                appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            }
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private fun getCategorySize(mediaType: Int): Long {
+        var size: Long = 0
+        val projection = arrayOf("SUM(${MediaStore.Files.FileColumns.SIZE})")
+        val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+        val selectionArgs = arrayOf(mediaType.toString())
+        
+        val queryUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+
+        try {
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    size = cursor.getLong(0)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return size
+    }
+
+    private fun scanFile(path: String) {
+        scanFiles(listOf(path))
+    }
+
+    private fun scanFiles(paths: List<String>) {
+        if (paths.isEmpty()) return
+        try {
+            MediaScannerConnection.scanFile(context, paths.toTypedArray(), null) { p, uri ->
+                android.util.Log.d("FileRepository", "Scanned $p: $uri")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}

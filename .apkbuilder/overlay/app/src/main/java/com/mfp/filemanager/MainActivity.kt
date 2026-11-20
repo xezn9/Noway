@@ -158,6 +158,11 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     launch {
+                        mainViewModel.browserSearchQuery.collect { q ->
+                            if (q != searchQueryState.value) searchQueryState.value = q
+                        }
+                    }
+                    launch {
                         mainViewModel.searchExpanded.collect { e ->
                             if (e != searchExpandedState.value) searchExpandedState.value = e
                         }
@@ -189,7 +194,11 @@ class MainActivity : AppCompatActivity() {
                         if (expanded) {
                             searchExpandedState.value = true
                             mainViewModel.setSearchExpanded(true)
-                            handleTab(0) // search results live on the Home tab
+                            // search results live on the Home tab, but inside a folder the bar
+                            // searches that folder only, so stay where we are
+                            if (navController.currentDestination?.id != R.id.nav_file_browser) {
+                                handleTab(0)
+                            }
                         } else {
                             collapseSearch()
                         }
@@ -197,7 +206,11 @@ class MainActivity : AppCompatActivity() {
                     searchQuery = { searchQueryState.value },
                     onSearchQueryChange = { q ->
                         searchQueryState.value = q
-                        homeViewModel.updateSearchQuery(q)
+                        if (navController.currentDestination?.id == R.id.nav_file_browser) {
+                            mainViewModel.setBrowserSearchQuery(q)
+                        } else {
+                            homeViewModel.updateSearchQuery(q)
+                        }
                     }
                 )
             }
@@ -320,6 +333,7 @@ class MainActivity : AppCompatActivity() {
         searchExpandedState.value = false
         mainViewModel.setSearchExpanded(false)
         searchQueryState.value = ""
+        mainViewModel.setBrowserSearchQuery("")
         homeViewModel.clearSearch()
     }
 
@@ -480,7 +494,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 launch {
+                    var lastEntryId: String? = null
                     navController.currentBackStackEntryFlow.collect { entry ->
+                        // a new screen (e.g. opening a folder) starts without an open search
+                        if (lastEntryId != null && lastEntryId != entry.id) collapseSearch()
+                        lastEntryId = entry.id
                         val isPlayer = entry.destination.id == R.id.nav_player
                         
                         hideForPlayer.value = isPlayer

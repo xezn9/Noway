@@ -28,6 +28,15 @@ class MainViewModel : ViewModel() {
         _searchExpanded.value = expanded
     }
 
+    // Text typed in the bottom search bar while a folder (FileBrowserFragment) is open.
+    // The folder screen reads it and searches only inside that folder.
+    private val _browserSearchQuery = MutableStateFlow("")
+    val browserSearchQuery: StateFlow<String> = _browserSearchQuery.asStateFlow()
+
+    fun setBrowserSearchQuery(query: String) {
+        _browserSearchQuery.value = query
+    }
+
     fun setCurrentTab(index: Int) {
         _currentTab.value = index
     }
