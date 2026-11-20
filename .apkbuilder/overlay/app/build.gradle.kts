@@ -70,6 +70,7 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
+        aidl = true // Shizuku file service (src/main/aidl)
     }
     packaging {
         resources {
@@ -97,6 +98,10 @@ tasks.configureEach {
 }
 
 dependencies {
+    // Shizuku: access to Android/data and Android/obb
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")

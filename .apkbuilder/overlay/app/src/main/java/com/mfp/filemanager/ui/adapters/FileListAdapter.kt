@@ -131,9 +131,6 @@ class FileListAdapter(
                 binding.btnMore.setOnClickListener(null)
             }
 
-            // Liquid glass action buttons
-            styleGlassActions()
-
             // Action Buttons
             binding.btnCopy.setOnClickListener { onActionClick(getItem(bindingAdapterPosition), "copy") }
             binding.btnMove.setOnClickListener { onActionClick(getItem(bindingAdapterPosition), "move") }
@@ -143,29 +140,30 @@ class FileListAdapter(
             binding.btnDelete.setOnClickListener { onActionClick(getItem(bindingAdapterPosition), "delete") }
         }
 
-        private fun styleGlassActions() {
-            val specs = listOf(
-                binding.btnCopy to 0xFF4DA3FF.toInt(),
-                binding.btnMove to 0xFF9B6BFF.toInt(),
-                binding.btnShare to 0xFF34C759.toInt(),
-                binding.btnRename to 0xFFFFB020.toInt(),
-                binding.btnInfo to 0xFF14C8C8.toInt(),
-                binding.btnDelete to 0xFFFF3B30.toInt()
-            )
-            for ((btn, tint) in specs) {
-                val icon = btn.getChildAt(0) as? ImageView ?: continue
-                icon.background = com.mfp.filemanager.ui.glass.GlassButtonDrawable(tint)
-                icon.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-                // little press "squish"
-                btn.setOnTouchListener { _, e ->
-                    when (e.actionMasked) {
-                        android.view.MotionEvent.ACTION_DOWN ->
-                            icon.animate().scaleX(0.86f).scaleY(0.86f).setDuration(90).start()
-                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
-                            icon.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-                    }
-                    false
+        private var actionsReady = false
+
+        /** Real Backdrop liquid-glass action buttons; composed only while the row is expanded. */
+        private fun setActionsVisible(visible: Boolean) {
+            val cv = binding.composeActions
+            if (visible && !actionsReady) {
+                actionsReady = true
+                cv.setViewCompositionStrategy(
+                    androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+                )
+                cv.setContent {
+                    com.mfp.filemanager.ui.compose.LiquidActionMenu(
+                        dark = com.mfp.filemanager.ui.util.Immersive.isDarkTheme(binding.root.context),
+                        onCopy = { binding.btnCopy.performClick() },
+                        onMove = { binding.btnMove.performClick() },
+                        onShare = { binding.btnShare.performClick() },
+                        onRename = { binding.btnRename.performClick() },
+                        onInfo = { binding.btnInfo.performClick() },
+                        onDelete = { binding.btnDelete.performClick() }
+                    )
                 }
+            } else if (!visible && actionsReady) {
+                actionsReady = false
+                cv.disposeComposition()
             }
         }
 
@@ -182,7 +180,9 @@ class FileListAdapter(
 
         fun bind(file: FileModel) {
             val isExpanded = file.path == expandedPath
-            binding.layoutMenu.visibility = if (isExpanded && !isSelectionMode && showItemMenu) View.VISIBLE else View.GONE
+            val showMenu = isExpanded && !isSelectionMode && showItemMenu
+            binding.layoutMenu.visibility = if (showMenu) View.VISIBLE else View.GONE
+            setActionsVisible(showMenu)
             
             if (showItemMenu) {
                 binding.btnMore.setImageResource(if (isExpanded) R.drawable.ic_more_horiz_24 else R.drawable.ic_more_vert_24)

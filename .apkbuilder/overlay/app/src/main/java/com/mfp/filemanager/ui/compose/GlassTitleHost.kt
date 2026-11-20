@@ -87,6 +87,48 @@ object GlassTitleState {
             p.height = v.height
             p.text = v.text?.toString() ?: ""
             p.textSizePx = v.textSize
+
+            // Fit the capsule to the text itself (not to the whole TextView, which can be much
+            // wider: centred / match_parent titles, pager neighbours leaking in from the side).
+            var capLeft = p.left.toFloat()
+            var capWidth = v.width.toFloat()
+            val lay = v.layout
+            if (lay != null && lay.lineCount > 0 && p.text.isNotEmpty()) {
+                val textLeft = v.compoundPaddingLeft + lay.getLineLeft(0)
+                val w = lay.getLineWidth(0) + v.paddingLeft + v.paddingRight
+                if (w < v.width) {
+                    capWidth = w
+                    capLeft += textLeft - v.paddingLeft
+                }
+            }
+
+            // Toolbar titles (back button + menu icons, RTL, long names) end up laid out partly
+            // off-screen. Centre the capsule between the back button and the menu icons and keep
+            // it inside the screen.
+            val bar = v.parent as? androidx.appcompat.widget.Toolbar
+            if (bar != null && bar.width > 0) {
+                val gap = 8f * v.resources.displayMetrics.density
+                bar.getLocationInWindow(loc)
+                val barLeft = (loc[0] - rootLoc[0]).toFloat()
+                val barWidth = bar.width.toFloat()
+                val barCenter = barLeft + barWidth / 2f
+                var minX = barLeft
+                var maxX = barLeft + barWidth
+                for (i in 0 until bar.childCount) {
+                    val c = bar.getChildAt(i)
+                    if (c === v || c.visibility != View.VISIBLE || c.width <= 0) continue
+                    val cl = barLeft + c.left
+                    val cr = barLeft + c.right
+                    if ((cl + cr) / 2f < barCenter) minX = maxOf(minX, cr) else maxX = minOf(maxX, cl)
+                }
+                minX += gap
+                maxX -= gap
+                val wanted = v.paint.measureText(p.text) * 1.08f + v.paddingLeft + v.paddingRight
+                capWidth = minOf(wanted, maxOf(maxX - minX, 0f))
+                capLeft = (barCenter - capWidth / 2f).coerceIn(minX, maxOf(minX, maxX - capWidth))
+            }
+            p.left = capLeft.toInt()
+            p.width = capWidth.toInt()
             p.bold = v.typeface?.isBold == true
             p.textColor = v.currentTextColor or (0xFF shl 24)
 

@@ -3,6 +3,7 @@ package com.mfp.filemanager.data
 import com.mfp.filemanager.data.trash.TrashManager
 import com.mfp.filemanager.data.trash.TrashedFile
 import com.mfp.filemanager.data.archive.ArchiveManager
+import com.mfp.filemanager.shizuku.ShizukuHelper
 
 import android.content.ContentResolver
 import android.content.Context
@@ -47,6 +48,28 @@ data class StorageVolumeInfo(
 class FileRepository(private val context: Context) {
 
     suspend fun getFilesFromPath(path: String): List<FileModel> = withContext(Dispatchers.IO) {
+        // Android/data and Android/obb: only reachable through Shizuku
+        if (ShizukuHelper.isRestrictedPath(path)) {
+            val entries = ShizukuHelper.list(path) ?: return@withContext emptyList()
+            val mimeMap = android.webkit.MimeTypeMap.getSingleton()
+            val base = path.trimEnd('/')
+            return@withContext entries.map { e ->
+                val ext = e.name.substringAfterLast('.', "").lowercase()
+                val mimeType = if (!e.isDirectory) mimeMap.getMimeTypeFromExtension(ext) else null
+                val full = "$base/${e.name}"
+                FileModel(
+                    id = full.hashCode().toLong(),
+                    name = e.name,
+                    path = full,
+                    size = e.size,
+                    dateModified = e.lastModified,
+                    mimeType = mimeType,
+                    type = determineFileType(mimeType, e.name),
+                    isDirectory = e.isDirectory,
+                    itemCount = e.itemCount
+                )
+            }.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+        }
         val directory = File(path)
         if (!directory.exists() || !directory.isDirectory) {
             return@withContext emptyList()
@@ -109,11 +132,21 @@ class FileRepository(private val context: Context) {
     
     private val trashManager = TrashManager(context)
 
-    suspend fun deleteFile(path: String): Boolean = trashManager.moveToTrash(File(path))
+    suspend fun deleteFile(path: String): Boolean {
+        // Android/data cannot be moved into the app's bin: delete it for good through Shizuku
+        if (ShizukuHelper.serviceFor(path) != null) return withContext(Dispatchers.IO) { ShizukuHelper.delete(path) }
+        return trashManager.moveToTrash(File(path))
+    }
 
     suspend fun deleteFilesBatch(paths: List<String>, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
-        val files = paths.map { File(it) }
-        trashManager.moveToTrashBatch(files, onProgress)
+        val (priv, normal) = paths.partition { ShizukuHelper.serviceFor(it) != null }
+        var ok = true
+        priv.forEachIndexed { i, p ->
+            ok = ShizukuHelper.delete(p) && ok
+            if (normal.isEmpty()) onProgress?.invoke((i + 1).toFloat() / priv.size)
+        }
+        if (normal.isNotEmpty()) ok = trashManager.moveToTrashBatch(normal.map { File(it) }, onProgress) && ok
+        ok
     }
 
     suspend fun copyFiles(sourcePaths: List<String>, destPath: String, onProgress: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
@@ -793,6 +826,10 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun renameFile(path: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        if (ShizukuHelper.serviceFor(path) != null) {
+            val target = path.substringBeforeLast('/') + "/" + newName
+            return@withContext !ShizukuHelper.exists(target) && ShizukuHelper.rename(path, target)
+        }
         try {
             val file = File(path)
             val newFile = File(file.parent, newName)
@@ -810,6 +847,7 @@ class FileRepository(private val context: Context) {
     
 
     suspend fun copyFile(sourcePath: String, destPath: String, onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        if (involvesShizuku(sourcePath, destPath)) return@withContext transferViaShizuku(sourcePath, destPath, move = false, onProgress)
         var destFile: File? = null
         try {
             android.util.Log.d("FileRepository", "copyFile: source=$sourcePath, dest=$destPath")
@@ -960,6 +998,7 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun moveFile(sourcePath: String, destPath: String, onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        if (involvesShizuku(sourcePath, destPath)) return@withContext transferViaShizuku(sourcePath, destPath, move = true, onProgress)
         try {
             val sourceFile = File(sourcePath)
             if (!sourceFile.exists()) return@withContext false
@@ -1223,6 +1262,83 @@ class FileRepository(private val context: Context) {
             e.printStackTrace()
         }
         return size
+    }
+
+    // ------------------------------------------------------------------ Shizuku (Android/data, Android/obb)
+
+    private fun involvesShizuku(a: String, b: String) =
+        ShizukuHelper.serviceFor(a) != null || ShizukuHelper.serviceFor(b) != null
+
+    /**
+     * Copy / move where the source and/or the destination is inside Android/data or Android/obb.
+     * Works for every combination (normal -> data, data -> normal, data -> data) by streaming.
+     */
+    private fun transferViaShizuku(
+        sourcePath: String,
+        destDir: String,
+        move: Boolean,
+        onProgress: ((Long, Long) -> Unit)?
+    ): Boolean {
+        return try {
+            if (!ShizukuHelper.exists(sourcePath)) return false
+            val srcName = sourcePath.trimEnd('/').substringAfterLast('/')
+            var target = "${destDir.trimEnd('/')}/$srcName"
+            var counter = 1
+            val base = srcName.substringBeforeLast('.', srcName)
+            val ext = if (srcName.contains('.')) "." + srcName.substringAfterLast('.') else ""
+            while (ShizukuHelper.exists(target)) {
+                target = "${destDir.trimEnd('/')}/$base ($counter)$ext"
+                counter++
+            }
+
+            // same storage area + move: a plain rename is instant
+            if (move && ShizukuHelper.serviceFor(sourcePath) != null &&
+                ShizukuHelper.serviceFor(destDir) != null && ShizukuHelper.rename(sourcePath, target)
+            ) {
+                onProgress?.invoke(1, 1)
+                return true
+            }
+
+            var copied = 0L
+            val ok = copyTree(sourcePath, target) { n -> copied += n; onProgress?.invoke(copied, copied) }
+            if (!ok) {
+                ShizukuHelper.delete(target)
+                return false
+            }
+            if (move && !ShizukuHelper.delete(sourcePath)) return false
+            scanFile(target)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("FileRepository", "transferViaShizuku", e)
+            false
+        }
+    }
+
+    private fun copyTree(src: String, dst: String, onBytes: (Long) -> Unit): Boolean {
+        if (ShizukuHelper.isDirectory(src)) {
+            if (!ShizukuHelper.mkdirs(dst)) return false
+            val children = if (ShizukuHelper.serviceFor(src) != null) {
+                ShizukuHelper.list(src)?.map { it.name } ?: return false
+            } else {
+                File(src).list()?.toList() ?: return false
+            }
+            for (name in children) {
+                if (!copyTree("${src.trimEnd('/')}/$name", "${dst.trimEnd('/')}/$name", onBytes)) return false
+            }
+            return true
+        }
+        ShizukuHelper.openRead(src).use { input ->
+            ShizukuHelper.openWrite(dst).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var n = input.read(buffer)
+                while (n >= 0) {
+                    output.write(buffer, 0, n)
+                    onBytes(n.toLong())
+                    n = input.read(buffer)
+                }
+            }
+        }
+        return true
     }
 
     private fun scanFile(path: String) {

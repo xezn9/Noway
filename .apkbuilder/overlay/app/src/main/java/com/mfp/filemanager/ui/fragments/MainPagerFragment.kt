@@ -32,8 +32,20 @@ class MainPagerFragment : Fragment() {
         return binding.root
     }
 
+    // Tab the user asked for (read before the pager restores its own, old, saved page)
+    private var wantedTab = 0
+
+    override fun onViewStateRestored(savedInstanceState: Bundle?) {
+        super.onViewStateRestored(savedInstanceState)
+        _binding?.let { b ->
+            if (b.viewPager.currentItem != wantedTab) b.viewPager.setCurrentItem(wantedTab, false)
+            mainViewModel.setCurrentTab(wantedTab)
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        wantedTab = mainViewModel.currentTab.value.coerceIn(0, 2)
 
         val adapter = MainPagerAdapter(this)
         binding.viewPager.adapter = adapter

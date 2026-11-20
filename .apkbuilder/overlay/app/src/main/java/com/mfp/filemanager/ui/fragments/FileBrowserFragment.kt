@@ -77,6 +77,19 @@ class FileBrowserFragment : Fragment() {
         setupRecyclerView()
         setupObservers()
         setupSwipeRefresh()
+
+        // Android/data & Android/obb: reload as soon as Shizuku finishes connecting
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                com.mfp.filemanager.shizuku.ShizukuHelper.status.collect { st ->
+                    if (st == com.mfp.filemanager.shizuku.ShizukuStatus.READY &&
+                        com.mfp.filemanager.shizuku.ShizukuHelper.isRestrictedPath(currentPath)
+                    ) {
+                        viewModel.loadFiles(currentPath, true)
+                    }
+                }
+            }
+        }
         
         // Initial Load
         if (currentPath.isNotEmpty()) {

@@ -107,9 +107,17 @@
         android:visibility="gone"
         tools:visibility="visible">
 
+        <!-- Liquid glass actions (ui/compose/LiquidActionMenu). The hidden buttons below only
+             keep the click wiring in the adapter. -->
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/compose_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
         <LinearLayout
             android:id="@+id/btn_copy"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">
@@ -124,6 +132,7 @@
         <LinearLayout
             android:id="@+id/btn_move"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">
@@ -138,6 +147,7 @@
         <LinearLayout
             android:id="@+id/btn_share"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">
@@ -152,6 +162,7 @@
         <LinearLayout
             android:id="@+id/btn_rename"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">
@@ -166,6 +177,7 @@
         <LinearLayout
             android:id="@+id/btn_info"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">
@@ -180,6 +192,7 @@
         <LinearLayout
             android:id="@+id/btn_delete"
             style="@style/FileActionButtonStyle"
+            android:visibility="gone"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1">

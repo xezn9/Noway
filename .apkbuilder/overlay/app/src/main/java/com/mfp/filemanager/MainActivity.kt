@@ -145,6 +145,9 @@ class MainActivity : AppCompatActivity() {
                 val currentId = navController.currentDestination?.id ?: -1
                 if (currentId != rootPagerId) {
                     leftRoot = true
+                    // The pager is re-created after the pop and used to start on Home (the
+                    // tab event was lost). Remember where the user wants to go first.
+                    if (index in 0..2) mainViewModel.setCurrentTab(index)
                     val popped = navController.popBackStack(rootPagerId, false)
                     if (!popped) {
                         navController.navigate(rootPagerId)
@@ -601,6 +604,35 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         com.mfp.filemanager.data.cache.AppCache.clear()
+    }
+
+    private var shizukuHintShown = false
+
+    override fun onResume() {
+        super.onResume()
+        checkShizuku()
+    }
+
+    /**
+     * Shizuku is detected automatically: if it is running we ask for the connection permission
+     * (Shizuku's own dialog); if it is installed but stopped we offer to open it once.
+     */
+    private fun checkShizuku() {
+        val helper = com.mfp.filemanager.shizuku.ShizukuHelper
+        helper.refresh()
+        when (helper.status.value) {
+            com.mfp.filemanager.shizuku.ShizukuStatus.NEED_PERMISSION -> helper.requestPermissionIfNeeded()
+            com.mfp.filemanager.shizuku.ShizukuStatus.NOT_RUNNING -> if (!shizukuHintShown) {
+                shizukuHintShown = true
+                com.mfp.filemanager.ui.compose.LiquidDialogs.confirm(
+                    title = "Shizuku is not running",
+                    message = "Shizuku is installed but not started. Start it to browse and manage Android/data and Android/obb.",
+                    confirmText = "Open Shizuku",
+                    dismissText = "Later"
+                ) { helper.openShizukuApp(this) }
+            }
+            else -> Unit
+        }
     }
 
 

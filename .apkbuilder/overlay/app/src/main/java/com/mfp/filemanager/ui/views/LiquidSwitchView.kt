@@ -55,9 +55,30 @@ class LiquidSwitchView @JvmOverloads constructor(
         windowBg = themeColor(android.R.attr.colorBackground, if (dark) 0xFF121212.toInt() else 0xFFFFFFFF.toInt())
     }
 
+    // The settings screen echoes the saved value back (often a stale one, because the DataStore
+    // write is still running and the combined state re-emits). Without this guard the toggle
+    // flips, then snaps back. A programmatic change that disagrees with what the user just did is
+    // ignored for a short moment; the real saved value then arrives and is equal anyway.
+    private var lastUserChangeAt = 0L
+
     var isChecked: Boolean
         get() = checkedState
-        set(value) { checkedState = value }
+        set(value) {
+            if (value != checkedState &&
+                android.os.SystemClock.uptimeMillis() - lastUserChangeAt < USER_CHANGE_GUARD_MS
+            ) return
+            checkedState = value
+        }
+
+    private fun userChanged(v: Boolean) {
+        lastUserChangeAt = android.os.SystemClock.uptimeMillis()
+        checkedState = v
+        listener?.invoke(null, v)
+    }
+
+    private companion object {
+        const val USER_CHANGE_GUARD_MS = 1200L
+    }
 
     var text: CharSequence
         get() = textState
@@ -101,17 +122,12 @@ class LiquidSwitchView @JvmOverloads constructor(
                     modifier = Modifier
                         .weight(1f)
                         .clickable(interactionSource = null, indication = null) {
-                            val v = !checkedState
-                            checkedState = v
-                            listener?.invoke(null, v)
+                            userChanged(!checkedState)
                         }
                 )
                 LiquidToggle(
                     selected = { checkedState },
-                    onSelect = {
-                        checkedState = it
-                        listener?.invoke(null, it)
-                    },
+                    onSelect = { userChanged(it) },
                     backdrop = scene,
                     dark = dark
                 )
