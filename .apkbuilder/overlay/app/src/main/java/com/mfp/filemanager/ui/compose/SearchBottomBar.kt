@@ -30,6 +30,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -175,7 +176,7 @@ fun SearchBottomBar(
     LaunchedEffect(expanded) {
         progress.animateTo(
             targetValue = if (expanded) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = 380f)
         )
     }
 
@@ -236,15 +237,26 @@ fun SearchBottomBar(
                             .graphicsLayer { alpha = progress.value }
                             .glassPill(backdrop, containerColor)
                     )
-                    // tabs: fade out quickly while collapsing, keep their original width
+                    // tabs: while collapsing they get squeezed together with the capsule (uniform
+                    // scale to fit the shrinking bar) and fade out near the end, like the reference
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .graphicsLayer { alpha = (1f - progress.value * 3f).coerceIn(0f, 1f) }
                             .layout { measurable, c ->
                                 val p = measurable.measure(Constraints.fixed(idleTabsW, fullH))
                                 layout(c.maxWidth, c.maxHeight) {
-                                    p.placeRelative(0, (c.maxHeight - fullH) / 2)
+                                    val fit = minOf(
+                                        c.maxWidth / idleTabsW.toFloat(),
+                                        c.maxHeight / fullH.toFloat()
+                                    ).coerceIn(0f, 1f)
+                                    p.placeRelativeWithLayer(
+                                        (c.maxWidth - idleTabsW) / 2,
+                                        (c.maxHeight - fullH) / 2
+                                    ) {
+                                        scaleX = fit
+                                        scaleY = fit
+                                        alpha = (1f - (progress.value - 0.3f) / 0.5f).coerceIn(0f, 1f)
+                                    }
                                 }
                             },
                         content = tabs
@@ -253,7 +265,7 @@ fun SearchBottomBar(
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .graphicsLayer { alpha = ((progress.value - 0.5f) * 2f).coerceIn(0f, 1f) },
+                            .graphicsLayer { alpha = ((progress.value - 0.6f) * 2.5f).coerceIn(0f, 1f) },
                         contentAlignment = Alignment.Center
                     ) { collapsedIcon() }
                     // while search is open, tapping the circle restores the bar
@@ -306,6 +318,7 @@ fun SearchBottomBar(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer { rubber.applyTo(this) }
+                        .clip(CircleShape)
                   ) {
                     // search icon: from the center (circle) to the start (field)
                     Icon(
@@ -330,7 +343,7 @@ fun SearchBottomBar(
                         Modifier
                             .fillMaxSize()
                             .padding(start = SideInset + SearchIconSize + 10.dp, end = SideInset)
-                            .graphicsLayer { alpha = ((progress.value - 0.55f) / 0.45f).coerceIn(0f, 1f) },
+                            .graphicsLayer { alpha = ((progress.value - 0.3f) / 0.3f).coerceIn(0f, 1f) },
                         contentAlignment = Alignment.CenterStart
                     ) {
                         BasicTextField(
@@ -365,7 +378,7 @@ fun SearchBottomBar(
                 }
             }
         ) { measurables, constraints ->
-            val p = progress.value
+            val p = progress.value.coerceIn(-0.06f, 1.06f)
             val full = constraints.maxWidth
             val gap = Gap.roundToPx()
             val compactH = CompactHeight.roundToPx()
