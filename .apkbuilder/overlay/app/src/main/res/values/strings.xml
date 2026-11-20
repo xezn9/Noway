@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">"MyFiles+"</string>
+    <string name="app_name">RcoFolder</string>
     <string name="trash_screen_title">Bin</string>
     <string name="trash_empty_message">Trash is empty</string>
     <string name="restore_files_title">Restore Files</string>
