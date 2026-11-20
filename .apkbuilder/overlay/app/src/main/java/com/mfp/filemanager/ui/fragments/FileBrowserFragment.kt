@@ -112,7 +112,6 @@ class FileBrowserFragment : Fragment() {
         // Initial Load
         if (currentPath.isNotEmpty()) {
             viewModel.loadFiles(currentPath)
-            binding.toolbar.subtitle = null
         } else {
             // Error or Root?
             Toast.makeText(context, "Invalid path", Toast.LENGTH_SHORT).show()
@@ -230,6 +229,8 @@ class FileBrowserFragment : Fragment() {
             binding.toolbar.inflateMenu(R.menu.menu_selection)
             binding.toolbar.setNavigationIcon(R.drawable.ic_close_24)
             binding.toolbar.subtitle = null
+            binding.toolbar.setOnClickListener(null)
+            binding.toolbar.isClickable = false
             binding.toolbar.setNavigationOnClickListener {
                 viewModel.exitBrowserSelectionMode()
             }
@@ -261,8 +262,16 @@ class FileBrowserFragment : Fragment() {
             val title = if (currentPath == "/storage/emulated/0") "Internal Storage" else File(currentPath).name
             binding.toolbar.title = if (isRoot) "Home" else if (title.isEmpty()) "Internal Storage" else title
             
-            // Fix: User-friendly subtitle path
-            binding.toolbar.subtitle = null
+            // ZArchiver-style: folder name on top, its location under it (cut from the start,
+            // drawn by the glass capsule together with a small "◢"); tap it to jump to a parent folder
+            if (isRoot) {
+                binding.toolbar.subtitle = null
+                binding.toolbar.setOnClickListener(null)
+                binding.toolbar.isClickable = false
+            } else {
+                binding.toolbar.subtitle = pathSubtitle()
+                binding.toolbar.setOnClickListener { showPathChooser() }
+            }
             if (isRoot) {
                 // Home is the top of the app: nothing to go back to
                 binding.toolbar.navigationIcon = null
@@ -296,6 +305,30 @@ class FileBrowserFragment : Fragment() {
                 pasteItem?.setIcon(R.drawable.ic_content_paste_24)
                 pasteItem?.title = "Paste"
             }
+        }
+    }
+
+    /** Where this folder lives, e.g. "/storage/emulated/0" for Download (the storage root shows itself). */
+    private fun pathSubtitle(): String =
+        if (currentPath == "/storage/emulated/0") currentPath else (File(currentPath).parent ?: currentPath)
+
+    /** Parent folders of the current one (closest first), stopping at the storage root. */
+    private fun parentFolders(): List<String> =
+        generateSequence(File(currentPath).parentFile) { it.parentFile }
+            .map { it.path }
+            .filter { it != "/" && it != "/storage" && it != "/storage/emulated" }
+            .toList()
+
+    private fun showPathChooser() {
+        if (isRoot || currentPath.isEmpty()) return
+        val parents = parentFolders()
+        if (parents.isEmpty()) return
+        val labels = parents.map { if (it == "/storage/emulated/0") "Internal Storage" else it }
+        com.mfp.filemanager.ui.compose.LiquidDialogs.choices(
+            title = "Go to folder",
+            items = labels
+        ) { index ->
+            parents.getOrNull(index)?.let { navigateToFolder(it) }
         }
     }
 

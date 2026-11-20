@@ -41,7 +41,7 @@ object GlassHeader {
         val ctx = root.context
         val bg = themeColor(ctx, android.R.attr.colorBackground)
 
-        header.background = GlassHeaderDrawable(bg)
+        header.background = GlassHeaderDrawable(bg, dp(ctx, 30f))
         ViewCompat.setTranslationZ(header, dp(ctx, 6f)) // draw above the scrolling content
 
         // titles of toolbars are centred like the Home / Settings capsules
@@ -85,21 +85,58 @@ object GlassHeader {
      */
     private fun styleTitle(header: View) {
         if (header !is ViewGroup) return
+        val bar = header as? Toolbar
         var tv: TextView? = null
-        for (i in 0 until header.childCount) {
-            val c = header.getChildAt(i)
-            if (c is TextView && c.text.isNotBlank()) { tv = c; break }
+        if (bar != null) {
+            // a Toolbar also holds a subtitle TextView: pick the real title one
+            val t = bar.title?.toString().orEmpty()
+            for (i in 0 until header.childCount) {
+                val c = header.getChildAt(i)
+                if (c is TextView && c.text.isNotBlank() && c.text.toString() == t) { tv = c; break }
+            }
+        }
+        if (tv == null) {
+            for (i in 0 until header.childCount) {
+                val c = header.getChildAt(i)
+                if (c is TextView && c.text.isNotBlank()) { tv = c; break }
+            }
         }
         tv ?: return
-        if (GlassTitleState.isAttached(tv)) return
         val ctx = header.context
-        tv.background = null
+
+        // ZArchiver-style second line (folder path): the Toolbar's subtitle. Like the title it
+        // stays in the layout but is invisible, the glass capsule draws it.
+        val sub = if (bar != null) GlassTitleState.findSubtitleView(bar, tv) else null
+        if (sub != null) {
+            sub.background = null
+            sub.alpha = 0f
+            val subPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, ctx.resources.displayMetrics)
+            if (kotlin.math.abs(sub.textSize - subPx) > 0.5f) sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            if (sub.paddingLeft != 0 || sub.paddingTop != 0 || sub.paddingRight != 0 || sub.paddingBottom != 0) {
+                sub.setPadding(0, 0, 0, 0)
+            }
+        }
+
+        // with a path line the title gets a bit smaller and loses its vertical padding (the capsule
+        // adds its own around both lines); without it everything is exactly as before
+        if (!originalTitleSize.containsKey(tv)) originalTitleSize[tv] = tv.textSize
+        val wantPx = if (sub != null)
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 17f, ctx.resources.displayMetrics)
+        else originalTitleSize[tv] ?: tv.textSize
+        if (kotlin.math.abs(tv.textSize - wantPx) > 0.5f) tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, wantPx)
         val h = dp(ctx, 18f).toInt()
-        val v = dp(ctx, 7f).toInt()
-        tv.setPadding(h, v, h, v)
+        val v = if (sub != null) 0 else dp(ctx, 7f).toInt()
+        if (tv.paddingTop != v || tv.paddingBottom != v || tv.paddingLeft != h || tv.paddingRight != h) {
+            tv.setPadding(h, v, h, v)
+        }
+
+        if (GlassTitleState.isAttached(tv)) return
+        tv.background = null
         tv.alpha = 0f // the overlay draws it
         GlassTitleState.attach(tv)
     }
+
+    private val originalTitleSize = java.util.WeakHashMap<TextView, Float>()
 
     // ------------------------------------------------------------------ camera cut-out
 
@@ -233,24 +270,35 @@ object GlassHeader {
 }
 
 /**
- * Soft fade only: the page colour melts from the top edge into the content below. The glass
- * itself (title capsule) is the real Backdrop one drawn by GlassTitleOverlay.
+ * The page colour stays solid behind the title capsule and fades out ONLY at the bottom edge
+ * (the last [fadePx] pixels), so the list melts away under the header instead of being cut off.
+ * The glass itself (title capsule) is the real Backdrop one drawn by GlassTitleOverlay.
  */
-class GlassHeaderDrawable(private val bg: Int) : Drawable() {
+class GlassHeaderDrawable(private val bg: Int, private val fadePx: Float) : Drawable() {
     private val fill = Paint()
 
     override fun onBoundsChange(b: android.graphics.Rect) {
         super.onBoundsChange(b)
         if (b.isEmpty) return
+        val h = b.height().toFloat()
+        val fade = fadePx.coerceIn(1f, h)
+        val start = (h - fade) / h // fraction where the fade begins; everything above it is solid
+        // eased (smoothstep) fade so there is no visible edge where it starts
+        val steps = 8
+        val colors = IntArray(steps + 2)
+        val pos = FloatArray(steps + 2)
+        val top = 0xEE
+        colors[0] = ColorUtils.setAlphaComponent(bg, top)
+        pos[0] = 0f
+        for (i in 0..steps) {
+            val t = i / steps.toFloat()
+            val eased = t * t * (3f - 2f * t)
+            colors[i + 1] = ColorUtils.setAlphaComponent(bg, (top * (1f - eased)).toInt())
+            pos[i + 1] = start + (1f - start) * t
+        }
+        pos[1] = maxOf(pos[1], 0.0001f)
         fill.shader = LinearGradient(
-            0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
-            intArrayOf(
-                ColorUtils.setAlphaComponent(bg, 0xEE),
-                ColorUtils.setAlphaComponent(bg, 0xC8),
-                ColorUtils.setAlphaComponent(bg, 0x55),
-                ColorUtils.setAlphaComponent(bg, 0x00)
-            ),
-            floatArrayOf(0f, 0.5f, 0.82f, 1f), Shader.TileMode.CLAMP
+            0f, b.top.toFloat(), 0f, b.bottom.toFloat(), colors, pos, Shader.TileMode.CLAMP
         )
     }
 
