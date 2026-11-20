@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -67,15 +68,18 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
 
     lint {
         abortOnError = false
         checkReleaseBuilds = false
     }
     buildToolsVersion = "34.0.0"
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
 }
 
 // Skip the AAR metadata check (newer androidx/backdrop libs declare a higher compileSdk/AGP minimum
