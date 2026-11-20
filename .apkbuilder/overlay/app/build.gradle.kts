@@ -47,6 +47,14 @@ android {
     }
 
     buildTypes {
+        // Fixed signature: debug builds are signed with the SAME key as release (signing/release.jks)
+        // so every APK you build (debug or release, any machine) has the same signature and can be
+        // installed as an update over the previous one, without uninstalling.
+        debug {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             isMinifyEnabled = false 
             isShrinkResources = false

@@ -20,14 +20,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
@@ -48,8 +52,12 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
 import com.mfp.filemanager.R
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
+import com.kyant.backdrop.catalog.utils.InteractiveHighlight
+import com.kyant.backdrop.catalog.utils.inspectDragGestures
+import com.kyant.backdrop.shadow.InnerShadow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private val BarHeight = 64.dp      // height of the tabs bar and the search button when closed
 private val CompactHeight = 48.dp  // height of the back circle and the search field when open
@@ -70,6 +78,65 @@ private fun Modifier.glassPill(backdrop: Backdrop, container: Color): Modifier =
         },
         onDrawSurface = { drawRect(container) }
     )
+
+/**
+ * "Rubber" press effect (same feel as the Backdrop glass button): on press the glass grows with a
+ * bouncy spring, it follows the finger with resistance and stretches in the drag direction, and on
+ * release it springs back with a jelly wobble. Pointer events are only observed, never consumed.
+ */
+private class RubberState(private val scope: CoroutineScope) {
+    private val press = Animatable(0f, 0.001f)
+    private val growX = Animatable(0f, 0.001f)
+    private val growY = Animatable(0f, 0.001f)
+    private val dragX = Animatable(0f, 0.5f)
+    private val dragY = Animatable(0f, 0.5f)
+
+    /** 0..1, drives the glass effects (lens / inner shadow / brightness). */
+    val pressProgress: Float get() = press.value
+
+    private var origin = Offset.Zero
+
+    fun onDown(position: Offset) {
+        origin = position
+        scope.launch { press.animateTo(1f, spring(1f, 700f, 0.001f)) }
+        scope.launch { growX.animateTo(1f, spring(0.6f, 250f, 0.001f)) }
+        scope.launch { growY.animateTo(1f, spring(0.7f, 250f, 0.001f)) }
+    }
+
+    fun onMove(position: Offset, limit: Float) {
+        val total = position - origin
+        val tx = resist(total.x, limit)
+        val ty = resist(total.y, limit)
+        scope.launch { dragX.animateTo(tx, spring(0.8f, 900f, 0.5f)) }
+        scope.launch { dragY.animateTo(ty, spring(0.8f, 900f, 0.5f)) }
+    }
+
+    fun onUp() {
+        scope.launch { press.animateTo(0f, spring(1f, 700f, 0.001f)) }
+        scope.launch { growX.animateTo(0f, spring(0.6f, 250f, 0.001f)) }
+        scope.launch { growY.animateTo(0f, spring(0.7f, 250f, 0.001f)) }
+        scope.launch { dragX.animateTo(0f, spring(0.45f, 280f, 0.5f)) }
+        scope.launch { dragY.animateTo(0f, spring(0.45f, 280f, 0.5f)) }
+    }
+
+    // soft limit: follows the finger 1:1 at first, then gets harder to pull (rubber band)
+    private fun resist(x: Float, limit: Float): Float = x * limit / (limit + abs(x))
+
+    /** Applies grow + stretch + follow to a graphics layer. */
+    fun applyTo(scope: GraphicsLayerScope) = with(scope) {
+        val w = size.width.coerceAtLeast(1f)
+        val h = size.height.coerceAtLeast(1f)
+        val grow = 12f.dp.toPx()
+        val dx = dragX.value
+        val dy = dragY.value
+        val stretchX = (abs(dx) / w).coerceAtMost(0.5f)
+        val stretchY = (abs(dy) / h).coerceAtMost(0.5f)
+        scaleX = (1f + growX.value * grow / w) * (1f + stretchX * 0.7f - stretchY * 0.2f)
+        scaleY = (1f + growY.value * grow / h) * (1f + stretchY * 0.7f - stretchX * 0.2f)
+        translationX = dx
+        translationY = dy
+    }
+}
 
 /**
  * Bottom tabs bar + search button.
@@ -116,15 +183,11 @@ fun SearchBottomBar(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val wasExpanded = remember { booleanArrayOf(expanded) }
+    // NOTE: opening the search no longer focuses the field / shows the keyboard by itself.
+    // The keyboard only appears when the user taps the search field.
     LaunchedEffect(expanded) {
         if (expanded) {
             wasExpanded[0] = true
-            // Showing the keyboard blocks the UI thread for a moment and resizes the window.
-            // If it starts together with the morph, the morph skips frames and "snaps".
-            // So let the morph play first, then focus + show the keyboard.
-            withTimeoutOrNull(600) { snapshotFlow { progress.value }.first { it >= 0.8f } }
-            runCatching { focusRequester.requestFocus() }
-            keyboard?.show()
         } else if (wasExpanded[0]) {
             wasExpanded[0] = false
             focusManager.clearFocus()
@@ -135,6 +198,21 @@ fun SearchBottomBar(
 
     val density = LocalDensity.current
     val noRipple = remember { MutableInteractionSource() }
+
+    val animationScope = rememberCoroutineScope()
+    val rubber = remember(animationScope) { RubberState(animationScope) }
+    val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope) }
+    val expandedState = rememberUpdatedState(expanded)
+    val rubberGesture = remember(rubber) {
+        Modifier.pointerInput(rubber) {
+            val limit = 56.dp.toPx()
+            inspectDragGestures(
+                onDragStart = { down -> if (!expandedState.value) rubber.onDown(down.position) },
+                onDragEnd = { rubber.onUp() },
+                onDragCancel = { rubber.onUp() }
+            ) { change, _ -> if (!expandedState.value) rubber.onMove(change.position, limit) }
+        }
+    }
 
     BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = BarInset)) {
         val fullH = with(density) { BarHeight.roundToPx() }
@@ -191,11 +269,44 @@ fun SearchBottomBar(
                 // ───────── search capsule ─────────
                 Box(
                     Modifier
-                        .glassPill(backdrop, containerColor)
-                        .clickable(noRipple, indication = null, enabled = !expanded) {
-                            onExpandedChange(true)
+                        .then(interactiveHighlight.gestureModifier)
+                        .then(rubberGesture)
+                        .drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { Capsule() },
+                            effects = {
+                                val p = rubber.pressProgress
+                                vibrancy()
+                                blur(8f.dp.toPx())
+                                lens((24f + 8f * p).dp.toPx(), (24f + 8f * p).dp.toPx())
+                            },
+                            innerShadow = {
+                                val p = rubber.pressProgress
+                                InnerShadow(radius = 8f.dp * p, alpha = p)
+                            },
+                            layerBlock = { rubber.applyTo(this) },
+                            onDrawSurface = {
+                                drawRect(containerColor)
+                                drawRect(Color.White.copy(alpha = 0.10f * rubber.pressProgress))
+                            }
+                        )
+                        .then(interactiveHighlight.modifier)
+                        .clickable(noRipple, indication = null) {
+                            if (!expanded) {
+                                onExpandedChange(true)
+                            } else {
+                                // tapping the open field focuses it and brings the keyboard
+                                runCatching { focusRequester.requestFocus() }
+                                keyboard?.show()
+                            }
                         }
                 ) {
+                  // everything inside moves/stretches together with the glass
+                  Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { rubber.applyTo(this) }
+                  ) {
                     // search icon: from the center (circle) to the start (field)
                     Icon(
                         painter = painterResource(R.drawable.ic_tab_search),
@@ -250,6 +361,7 @@ fun SearchBottomBar(
                             }
                         )
                     }
+                  }
                 }
             }
         ) { measurables, constraints ->
