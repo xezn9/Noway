@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -29,19 +30,18 @@ import com.mfp.filemanager.R
 
 private data class TabItem(@DrawableRes val icon: Int, val labelRes: Int)
 
-// Same order/functions as the old BottomNavigationView menu:
-// 0 = Home, 1 = Music, 2 = Bin, 3 = Settings
+// Same order/functions as the ViewPager in MainPagerFragment:
+// 0 = Home, 1 = Music, 2 = Settings   (Bin tab removed, search lives next to the tabs now)
 private val tabs = listOf(
     TabItem(R.drawable.ic_tab_home, R.string.tab_home),
     TabItem(R.drawable.ic_tab_music, R.string.tab_music),
-    TabItem(R.drawable.ic_tab_bin, R.string.trash_screen_title),
     TabItem(R.drawable.ic_tab_settings, R.string.tab_settings)
 )
 
 /**
  * Hosts the existing View-based UI (nav host, mini player, progress overlay...) inside a
- * Compose layer that is registered as the backdrop. The Liquid Glass tabs then blur / refract
- * whatever the screen is showing behind them.
+ * Compose layer that is registered as the backdrop. The Liquid Glass tabs + search button then
+ * blur / refract whatever the screen is showing behind them.
  */
 @Composable
 fun MainContainer(
@@ -50,10 +50,18 @@ fun MainContainer(
     onTabSelected: (Int) -> Unit,
     onTabClick: (Int) -> Unit,
     tabsVisible: () -> Boolean,
-    darkTheme: Boolean
+    darkTheme: Boolean,
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit
 ) {
     val backdrop = rememberLayerBackdrop()
     val contentColor = if (darkTheme) Color.White else Color.Black
+    // same glass tint LiquidBottomTabs uses, so the search button matches the bar
+    val glassColor =
+        if (darkTheme) Color(0xFF121212).copy(0.4f)
+        else Color(0xFFFAFAFA).copy(0.4f)
 
     Box(Modifier.fillMaxSize()) {
         // Everything the glass should "see" goes inside the backdrop layer
@@ -70,30 +78,48 @@ fun MainContainer(
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {
-            LiquidBottomTabs(
-                selectedTabIndex = selectedTab,
-                onTabSelected = onTabSelected,
+            SearchBottomBar(
                 backdrop = backdrop,
-                tabsCount = tabs.size,
-                darkTheme = darkTheme,
+                expanded = searchExpanded,
+                onExpandedChange = onSearchExpandedChange,
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                placeholder = stringResource(R.string.search_files_hint),
+                containerColor = glassColor,
+                contentColor = contentColor,
+                collapsedIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_tab_home),
+                        contentDescription = null,
+                        tint = contentColor
+                    )
+                },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
+                    .imePadding()
                     .padding(bottom = 24.dp)
             ) {
-                tabs.forEachIndexed { index, tab ->
-                    LiquidBottomTab(onClick = { onTabClick(index) }) {
-                        Icon(
-                            painter = painterResource(tab.icon),
-                            contentDescription = null,
-                            tint = contentColor
-                        )
-                        Text(
-                            text = stringResource(tab.labelRes),
-                            color = contentColor,
-                            fontSize = 11.sp,
-                            maxLines = 1
-                        )
+                LiquidBottomTabs(
+                    selectedTabIndex = selectedTab,
+                    onTabSelected = onTabSelected,
+                    backdrop = backdrop,
+                    tabsCount = tabs.size,
+                    darkTheme = darkTheme,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    tabs.forEachIndexed { index, tab ->
+                        LiquidBottomTab(onClick = { onTabClick(index) }) {
+                            Icon(
+                                painter = painterResource(tab.icon),
+                                contentDescription = null,
+                                tint = contentColor
+                            )
+                            Text(
+                                text = stringResource(tab.labelRes),
+                                color = contentColor,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }

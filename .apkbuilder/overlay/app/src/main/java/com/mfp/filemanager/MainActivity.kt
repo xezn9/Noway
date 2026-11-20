@@ -33,13 +33,27 @@ import androidx.core.view.isVisible
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.mfp.filemanager.data.FileRepository
 import com.mfp.filemanager.ui.compose.MainContainer
+import com.mfp.filemanager.ui.viewmodels.HomeViewModel
+import com.mfp.filemanager.ui.viewmodels.HomeViewModelFactory
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val audioViewModel: AudioViewModel by viewModels()
     private val mainViewModel: MainViewModel by viewModels()
+
+    // Same instance HomeFragment gets through activityViewModels (same store + same key),
+    // so the bottom search bar and the Home results overlay share the search state.
+    private val homeViewModel: HomeViewModel by viewModels {
+        HomeViewModelFactory(
+            FileRepository(applicationContext),
+            SettingsRepository(applicationContext)
+        )
+    }
     private lateinit var navController: NavController
     private lateinit var fileProgressController: FileProgressController
 
@@ -51,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private val hideForPlayer = mutableStateOf(false)
     private val hideForKeyboard = mutableStateOf(false)
     private val hideForProgress = mutableStateOf(false)
+    private val searchQueryState = mutableStateOf("") // text shown in the bottom search field
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val settingsRepository = SettingsRepository(applicationContext)
@@ -118,7 +133,7 @@ class MainActivity : AppCompatActivity() {
                         navController.navigate(rootPagerId)
                     }
                 }
-                if (index in 0..3 && (leftRoot || mainViewModel.currentTab.value != index)) {
+                if (index in 0..2 && (leftRoot || mainViewModel.currentTab.value != index)) {
                     mainViewModel.requestTabChange(index)
                 }
             }
@@ -128,14 +143,26 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
                     mainViewModel.currentTab.collect { index ->
-                        if (index in 0..3) tabIndexState.intValue = index
+                        if (index in 0..2) tabIndexState.intValue = index
                     }
                 }
             }
 
             // Liquid Glass bottom tabs
             val darkTabs = useDarkTheme
+            // Keep the Compose search field in sync when the query is changed/cleared elsewhere
+            lifecycleScope.launch {
+                lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                    homeViewModel.searchQuery.collect { q ->
+                        if (q != searchQueryState.value) searchQueryState.value = q
+                    }
+                }
+            }
+
             setContent {
+                val searchExpanded by mainViewModel.searchExpanded.collectAsState()
+                val searchQuery by searchQueryState
+
                 MainContainer(
                     contentView = binding.root,
                     selectedTab = { tabIndexState.intValue },
@@ -147,10 +174,25 @@ class MainActivity : AppCompatActivity() {
                     tabsVisible = {
                         !swipeNavState.value &&
                             !hideForPlayer.value &&
-                            !hideForKeyboard.value &&
+                            // the bar must stay visible while the search field is open
+                            (!hideForKeyboard.value || searchExpanded) &&
                             !hideForProgress.value
                     },
-                    darkTheme = darkTabs
+                    darkTheme = darkTabs,
+                    searchExpanded = searchExpanded,
+                    onSearchExpandedChange = { expanded ->
+                        if (expanded) {
+                            mainViewModel.setSearchExpanded(true)
+                            handleTab(0) // search results live on the Home tab
+                        } else {
+                            collapseSearch()
+                        }
+                    },
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { q ->
+                        searchQueryState.value = q
+                        homeViewModel.updateSearchQuery(q)
+                    }
                 )
             }
 
@@ -265,6 +307,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /** Closes the bottom search field and clears the query (results overlay disappears). */
+    private fun collapseSearch() {
+        mainViewModel.setSearchExpanded(false)
+        searchQueryState.value = ""
+        homeViewModel.clearSearch()
     }
 
     private fun setupMiniPlayer() {
@@ -429,6 +478,7 @@ class MainActivity : AppCompatActivity() {
                         
                         hideForPlayer.value = isPlayer
                         if (isPlayer) {
+                            collapseSearch()
                              // Hide entire dock (MiniPlayer + NavBar)
                             binding.bottomBarContainer.animate()
                                 .translationY(binding.bottomBarContainer.height.toFloat().coerceAtLeast(200f))
