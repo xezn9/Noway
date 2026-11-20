@@ -154,5 +154,9 @@ fun MainContainer(
                 }
             }
         }
+
+        // Liquid Glass dialogs: drawn ABOVE everything and OUTSIDE the backdrop layer,
+        // so the glass refracts the whole screen behind it.
+        LiquidDialogHost(backdrop = backdrop, dark = darkTheme)
     }
 }

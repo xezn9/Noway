@@ -248,14 +248,14 @@ class FileBrowserFragment : Fragment() {
 
     private fun showMultiDeleteDialog() {
         val selectedCount = viewModel.selectedBrowserFiles.value.size
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Delete $selectedCount items?")
-            .setMessage("Are you sure you want to move these items to Bin?")
-            .setPositiveButton("Delete") { _, _ ->
-                viewModel.deleteSelectedBrowserFiles(currentPath)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        com.mfp.filemanager.ui.compose.LiquidDialogs.confirm(
+            title = "Delete $selectedCount items?",
+            message = "Are you sure you want to move these items to Bin?",
+            confirmText = "Delete",
+            destructive = true
+        ) {
+            viewModel.deleteSelectedBrowserFiles(currentPath)
+        }
     }
 
     private fun showMessage(msg: String) {
@@ -263,56 +263,37 @@ class FileBrowserFragment : Fragment() {
     }
 
     private fun showRenameDialog(file: com.mfp.filemanager.data.FileModel) {
-        val input = android.widget.EditText(requireContext())
-        input.setText(file.name)
-        val container = android.widget.FrameLayout(requireContext())
-        val params = android.widget.FrameLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        params.leftMargin = 50 // dp to px conversion needed ideally, but keeping simple
-        params.rightMargin = 50
-        container.addView(input, params)
-
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Rename")
-            .setView(container)
-            .setPositiveButton("Rename") { _, _ ->
-                val newName = input.text.toString()
-                if (newName.isNotEmpty() && newName != file.name) {
-                    viewModel.renameFile(file, newName) {
-                        viewModel.loadFiles(currentPath, true)
-                    }
+        com.mfp.filemanager.ui.compose.LiquidDialogs.input(title = "Rename", initial = file.name) { newName ->
+            val clean = newName.trim()
+            if (clean.isNotEmpty() && clean != file.name) {
+                viewModel.renameFile(file, clean) {
+                    viewModel.loadFiles(currentPath, true)
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
 
     private fun showDeleteDialog(file: com.mfp.filemanager.data.FileModel) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Delete File?")
-            .setMessage("Are you sure you want to move '${file.name}' to Bin?")
-            .setPositiveButton("Delete") { _, _ ->
-                viewModel.deleteFile(file.path, currentPath)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        com.mfp.filemanager.ui.compose.LiquidDialogs.confirm(
+            title = "Delete File?",
+            message = "Are you sure you want to move '${file.name}' to Bin?",
+            confirmText = "Delete",
+            destructive = true
+        ) {
+            viewModel.deleteFile(file.path, currentPath)
+        }
     }
 
     private fun showDetailsDialog(file: com.mfp.filemanager.data.FileModel) {
-        val details = """
-            Name: ${file.name}
-            Path: ${file.path}
-            Size: ${com.mfp.filemanager.data.FileUtils.formatSize(file.size)}
-            Modified: ${com.mfp.filemanager.data.FileUtils.formatDate(file.dateModified)}
-        """.trimIndent()
-        
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Details")
-            .setMessage(details)
-            .setPositiveButton("OK", null)
-            .show()
+        com.mfp.filemanager.ui.compose.LiquidDialogs.info(
+            title = "Details",
+            rows = listOf(
+                "Name" to file.name,
+                "Path" to file.path,
+                "Size" to com.mfp.filemanager.data.FileUtils.formatSize(file.size),
+                "Modified" to com.mfp.filemanager.data.FileUtils.formatDate(file.dateModified)
+            )
+        )
     }
 
     private fun navigateToFolder(path: String) {
