@@ -2,6 +2,9 @@ package com.mfp.filemanager.ui.compose
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -14,9 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,6 +34,8 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.catalog.components.LiquidBottomTab
 import com.kyant.backdrop.catalog.components.LiquidBottomTabs
 import com.mfp.filemanager.R
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 
 private data class TabItem(@DrawableRes val icon: Int, val labelRes: Int)
 
@@ -51,9 +60,9 @@ fun MainContainer(
     onTabClick: (Int) -> Unit,
     tabsVisible: () -> Boolean,
     darkTheme: Boolean,
-    searchExpanded: Boolean,
+    searchExpanded: () -> Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
-    searchQuery: String,
+    searchQuery: () -> String,
     onSearchQueryChange: (String) -> Unit
 ) {
     val backdrop = rememberLayerBackdrop()
@@ -63,7 +72,27 @@ fun MainContainer(
         if (darkTheme) Color(0xFF121212).copy(0.4f)
         else Color(0xFFFAFAFA).copy(0.4f)
 
-    Box(Modifier.fillMaxSize()) {
+    // When the keyboard opens/closes the window is resized (adjustResize) and the bar would jump.
+    // Keep the bar where it was and glide it to its new position instead.
+    val scope = rememberCoroutineScope()
+    val resizeOffset = remember { Animatable(0f) }
+    val lastHeight = remember { intArrayOf(0) }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { size ->
+                val old = lastHeight[0]
+                lastHeight[0] = size.height
+                if (old != 0 && old != size.height) {
+                    val delta = (old - size.height).toFloat()
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        resizeOffset.snapTo(resizeOffset.value + delta)
+                        resizeOffset.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+                    }
+                }
+            }
+    ) {
         // Everything the glass should "see" goes inside the backdrop layer
         Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
             AndroidView(
@@ -80,9 +109,9 @@ fun MainContainer(
         ) {
             SearchBottomBar(
                 backdrop = backdrop,
-                expanded = searchExpanded,
+                expanded = searchExpanded(),
                 onExpandedChange = onSearchExpandedChange,
-                query = searchQuery,
+                query = searchQuery(),
                 onQueryChange = onSearchQueryChange,
                 placeholder = stringResource(R.string.search_files_hint),
                 containerColor = glassColor,
@@ -95,6 +124,7 @@ fun MainContainer(
                     )
                 },
                 modifier = Modifier
+                    .graphicsLayer { translationY = resizeOffset.value }
                     .imePadding()
                     .padding(bottom = 24.dp)
             ) {

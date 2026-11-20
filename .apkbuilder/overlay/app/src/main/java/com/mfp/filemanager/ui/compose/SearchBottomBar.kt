@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -47,6 +48,8 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
 import com.mfp.filemanager.R
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 private val BarHeight = 64.dp      // height of the tabs bar and the search button when closed
 private val CompactHeight = 48.dp  // height of the back circle and the search field when open
@@ -105,18 +108,25 @@ fun SearchBottomBar(
     LaunchedEffect(expanded) {
         progress.animateTo(
             targetValue = if (expanded) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f)
+            animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)
         )
     }
 
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val wasExpanded = remember { booleanArrayOf(expanded) }
     LaunchedEffect(expanded) {
         if (expanded) {
+            wasExpanded[0] = true
+            // Showing the keyboard blocks the UI thread for a moment and resizes the window.
+            // If it starts together with the morph, the morph skips frames and "snaps".
+            // So let the morph play first, then focus + show the keyboard.
+            withTimeoutOrNull(600) { snapshotFlow { progress.value }.first { it >= 0.8f } }
             runCatching { focusRequester.requestFocus() }
             keyboard?.show()
-        } else {
+        } else if (wasExpanded[0]) {
+            wasExpanded[0] = false
             focusManager.clearFocus()
             keyboard?.hide()
         }

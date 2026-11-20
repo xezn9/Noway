@@ -33,8 +33,6 @@ import androidx.core.view.isVisible
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import com.mfp.filemanager.data.FileRepository
 import com.mfp.filemanager.ui.compose.MainContainer
 import com.mfp.filemanager.ui.viewmodels.HomeViewModel
@@ -66,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private val hideForKeyboard = mutableStateOf(false)
     private val hideForProgress = mutableStateOf(false)
     private val searchQueryState = mutableStateOf("") // text shown in the bottom search field
+    private val searchExpandedState = mutableStateOf(false) // mirror of mainViewModel.searchExpanded
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val settingsRepository = SettingsRepository(applicationContext)
@@ -150,19 +149,25 @@ class MainActivity : AppCompatActivity() {
 
             // Liquid Glass bottom tabs
             val darkTabs = useDarkTheme
-            // Keep the Compose search field in sync when the query is changed/cleared elsewhere
+            // Keep the Compose search bar in sync when it is changed/cleared elsewhere (e.g. Back)
             lifecycleScope.launch {
                 lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                    homeViewModel.searchQuery.collect { q ->
-                        if (q != searchQueryState.value) searchQueryState.value = q
+                    launch {
+                        homeViewModel.searchQuery.collect { q ->
+                            if (q != searchQueryState.value) searchQueryState.value = q
+                        }
+                    }
+                    launch {
+                        mainViewModel.searchExpanded.collect { e ->
+                            if (e != searchExpandedState.value) searchExpandedState.value = e
+                        }
                     }
                 }
             }
 
+            // NOTE: this lambda must not read any state itself. If it did, every keystroke /
+            // expand would recompose it, recreate the lambdas below and reset the tabs bar.
             setContent {
-                val searchExpanded by mainViewModel.searchExpanded.collectAsState()
-                val searchQuery by searchQueryState
-
                 MainContainer(
                     contentView = binding.root,
                     selectedTab = { tabIndexState.intValue },
@@ -175,20 +180,21 @@ class MainActivity : AppCompatActivity() {
                         !swipeNavState.value &&
                             !hideForPlayer.value &&
                             // the bar must stay visible while the search field is open
-                            (!hideForKeyboard.value || searchExpanded) &&
+                            (!hideForKeyboard.value || searchExpandedState.value) &&
                             !hideForProgress.value
                     },
                     darkTheme = darkTabs,
-                    searchExpanded = searchExpanded,
+                    searchExpanded = { searchExpandedState.value },
                     onSearchExpandedChange = { expanded ->
                         if (expanded) {
+                            searchExpandedState.value = true
                             mainViewModel.setSearchExpanded(true)
                             handleTab(0) // search results live on the Home tab
                         } else {
                             collapseSearch()
                         }
                     },
-                    searchQuery = searchQuery,
+                    searchQuery = { searchQueryState.value },
                     onSearchQueryChange = { q ->
                         searchQueryState.value = q
                         homeViewModel.updateSearchQuery(q)
@@ -311,6 +317,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Closes the bottom search field and clears the query (results overlay disappears). */
     private fun collapseSearch() {
+        searchExpandedState.value = false
         mainViewModel.setSearchExpanded(false)
         searchQueryState.value = ""
         homeViewModel.clearSearch()
