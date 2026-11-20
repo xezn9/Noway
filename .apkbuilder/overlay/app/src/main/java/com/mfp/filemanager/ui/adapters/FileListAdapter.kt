@@ -197,7 +197,7 @@ class FileListAdapter(
             binding.layoutMain.isSelected = file.isSelected
             binding.layoutMain.setBackgroundColor(
                 if (file.isSelected) 
-                    "#334285F4".toColorInt() // 20% alpha blue
+                    androidx.core.graphics.ColorUtils.setAlphaComponent(com.mfp.filemanager.ui.theme.GlassConfig.accentArgb, 0x33) // 20% alpha app colour
                 else 
                     Color.TRANSPARENT
             )

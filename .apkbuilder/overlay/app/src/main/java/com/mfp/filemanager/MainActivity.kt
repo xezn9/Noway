@@ -89,6 +89,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // "App color" from Settings: Material overlay for every classic view (headers, buttons,
+        // sliders, checkboxes...). The glass parts read GlassConfig.accent directly.
+        theme.applyStyle(
+            com.mfp.filemanager.ui.theme.AccentPalette.find(com.mfp.filemanager.ui.theme.GlassConfig.accentArgb).overlay,
+            true
+        )
+
         super.onCreate(savedInstanceState)
         com.mfp.filemanager.ui.util.Immersive.apply(this) // full screen: no status bar, no nav bar
 

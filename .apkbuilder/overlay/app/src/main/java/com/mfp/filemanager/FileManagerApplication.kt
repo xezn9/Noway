@@ -34,6 +34,9 @@ class FileManagerApplication : Application(), ImageLoaderFactory {
                     else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
                 }
                 androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
+
+                // App colour + liquid glass sliders (blur / transparency / refraction)
+                com.mfp.filemanager.ui.theme.GlassConfig.load(repo)
             }
         } catch (e: Exception) {
             e.printStackTrace()

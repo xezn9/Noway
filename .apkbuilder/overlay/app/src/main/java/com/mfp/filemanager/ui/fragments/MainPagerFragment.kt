@@ -91,10 +91,18 @@ class MainPagerFragment : Fragment() {
 
         override fun createFragment(position: Int): Fragment {
             return when (position) {
-                0 -> HomeFragment()
+                0 -> rootBrowser()
                 1 -> MusicFragment()
                 2 -> SettingsFragment()
-                else -> HomeFragment()
+                else -> rootBrowser()
+            }
+        }
+
+        /** Home = the main storage folders (the file browser opened at the storage root). */
+        private fun rootBrowser(): Fragment = FileBrowserFragment().apply {
+            arguments = Bundle().apply {
+                putString("path", android.os.Environment.getExternalStorageDirectory().absolutePath)
+                putBoolean(FileBrowserFragment.ARG_ROOT, true)
             }
         }
     }

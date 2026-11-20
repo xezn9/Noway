@@ -19,6 +19,8 @@ import android.widget.ProgressBar
 import android.widget.LinearLayout
 import android.widget.TextView
 
+import com.mfp.filemanager.ui.theme.AccentPalette
+import com.mfp.filemanager.ui.theme.GlassConfig
 import com.mfp.filemanager.ui.viewmodels.SettingsViewModel
 import com.mfp.filemanager.ui.viewmodels.SettingsViewModelFactory
 import com.mfp.filemanager.ui.viewmodels.UpdateCheckState
@@ -59,6 +61,8 @@ class SettingsFragment : Fragment() {
 
         setupListeners()
         setupObservers()
+        setupColorGrid()
+        setupGlassSliders()
         
         // Refresh cache size on entry
         viewModel.calculateCacheSize(requireContext())
@@ -313,6 +317,134 @@ class SettingsFragment : Fragment() {
                     }
                 }
             }
+    }
+
+    // ------------------------------------------------------------------ App color
+
+    /** One round swatch per colour of [AccentPalette]; the selected one gets a ring. */
+    private fun setupColorGrid() {
+        val ctx = requireContext()
+        val grid = binding.gridColors
+        grid.removeAllViews()
+
+        val density = ctx.resources.displayMetrics.density
+        val cell = (46 * density).toInt()
+        val margin = (4 * density).toInt()
+        val ringWidth = (3 * density).toInt()
+        val ringInset = (6 * density).toInt()
+        val plainInset = (3 * density).toInt()
+        val ringColor = com.google.android.material.color.MaterialColors.getColor(
+            ctx, com.google.android.material.R.attr.colorOnSurface, android.graphics.Color.GRAY
+        )
+
+        val selected = AccentPalette.find(GlassConfig.accentArgb)
+        binding.textCurrentColor.text = selected.name
+
+        AccentPalette.swatches.forEach { swatch ->
+            val isSelected = swatch.argb == selected.argb
+
+            val fill = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(swatch.argb)
+            }
+            val drawable = if (isSelected) {
+                val ring = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(android.graphics.Color.TRANSPARENT)
+                    setStroke(ringWidth, ringColor)
+                }
+                android.graphics.drawable.LayerDrawable(arrayOf(ring, fill)).apply {
+                    setLayerInset(1, ringInset, ringInset, ringInset, ringInset)
+                }
+            } else {
+                android.graphics.drawable.LayerDrawable(arrayOf(fill)).apply {
+                    setLayerInset(0, plainInset, plainInset, plainInset, plainInset)
+                }
+            }
+
+            val v = View(ctx).apply {
+                background = drawable
+                contentDescription = swatch.name
+                isClickable = true
+                isFocusable = true
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = cell
+                    height = cell
+                    setMargins(margin, margin, margin, margin)
+                }
+                setOnClickListener { onColorPicked(swatch) }
+            }
+            grid.addView(v)
+        }
+    }
+
+    private fun onColorPicked(swatch: AccentPalette.Swatch) {
+        if (swatch.argb == GlassConfig.accentArgb) return
+
+        // glass parts (folders, tabs, toggles, selection) change right now ...
+        GlassConfig.accentArgb = swatch.argb
+        binding.textCurrentColor.text = swatch.name
+        setupColorGrid()
+
+        // ... and the classic views get the new Material overlay when the screen is rebuilt
+        lifecycleScope.launch {
+            viewModel.saveAccentColor(swatch.argb)
+            kotlinx.coroutines.delay(250)
+            if (activity?.isFinishing == false && activity?.isDestroyed == false) {
+                activity?.recreate()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Liquid Glass sliders
+
+    private fun setupGlassSliders() {
+        bindGlassSlider(binding.sliderBlur, binding.textBlurValue, GlassConfig.blur,
+            onLive = { GlassConfig.blur = it },
+            onSave = { viewModel.saveGlassBlur(it) })
+
+        bindGlassSlider(binding.sliderTransparency, binding.textTransparencyValue, GlassConfig.transparency,
+            onLive = { GlassConfig.transparency = it },
+            onSave = { viewModel.saveGlassTransparency(it) })
+
+        bindGlassSlider(binding.sliderRefraction, binding.textRefractionValue, GlassConfig.refraction,
+            onLive = { GlassConfig.refraction = it },
+            onSave = { viewModel.saveGlassRefraction(it) })
+
+        binding.btnResetGlass.setOnClickListener {
+            GlassConfig.resetGlass()
+            binding.sliderBlur.value = 50f
+            binding.sliderTransparency.value = 50f
+            binding.sliderRefraction.value = 50f
+            viewModel.saveGlassBlur(0.5f)
+            viewModel.saveGlassTransparency(0.5f)
+            viewModel.saveGlassRefraction(0.5f)
+        }
+    }
+
+    /**
+     * The glass changes live while the finger moves ([onLive] only touches GlassConfig, which is
+     * cheap); the value is written to DataStore once, when the finger is lifted ([onSave]).
+     */
+    private fun bindGlassSlider(
+        slider: com.google.android.material.slider.Slider,
+        label: TextView,
+        initial: Float,
+        onLive: (Float) -> Unit,
+        onSave: (Float) -> Unit
+    ) {
+        slider.value = Math.round(initial * 100f).toFloat().coerceIn(0f, 100f)
+        label.text = "${slider.value.toInt()}%"
+        slider.addOnChangeListener { _, value, fromUser ->
+            label.text = "${value.toInt()}%"
+            if (fromUser) onLive(value / 100f)
+        }
+        slider.addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) {}
+            override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                onSave(slider.value / 100f)
+            }
+        })
     }
 
     override fun onDestroyView() {

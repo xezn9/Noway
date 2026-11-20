@@ -31,7 +31,8 @@ class GlassFileIconDrawable(
 
     private val label: String = (if (kind == FileKind.FOLDER) "" else (kind.label ?: extension ?: "")).uppercase().take(4)
 
-    private val tint = kind.tint
+    // folders follow the "App color" chosen in Settings
+    private val tint = if (kind == FileKind.FOLDER) com.mfp.filemanager.ui.theme.GlassConfig.accentArgb else kind.tint
     private val light = ColorUtils.blendARGB(tint, Color.WHITE, 0.5f)
     private val deep = ColorUtils.blendARGB(tint, Color.BLACK, 0.28f)
 
@@ -164,9 +165,9 @@ class GlassFileIconDrawable(
         if (kind.shape == GlassShape.FOLDER) {
             // iOS-style folder: solid two-tone blue, lighter front panel, thin top highlight
             iosBack.shader = LinearGradient(cx, ir.top, cx, ir.bottom,
-                Color.parseColor("#3D9CF2"), Color.parseColor("#1F76D8"), Shader.TileMode.CLAMP)
+                ColorUtils.blendARGB(tint, Color.WHITE, 0.08f), ColorUtils.blendARGB(tint, Color.BLACK, 0.22f), Shader.TileMode.CLAMP)
             iosFront.shader = LinearGradient(cx, ir.top + ir.height() * 0.36f, cx, ir.bottom,
-                Color.parseColor("#7CCBFF"), Color.parseColor("#47A9F7"), Shader.TileMode.CLAMP)
+                ColorUtils.blendARGB(tint, Color.WHITE, 0.50f), ColorUtils.blendARGB(tint, Color.WHITE, 0.22f), Shader.TileMode.CLAMP)
             iosLine.strokeWidth = maxOf(1f, w * 0.03f)
             iosLine.color = Color.argb(0xB0, 255, 255, 255)
         }

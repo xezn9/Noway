@@ -37,9 +37,14 @@ import com.kyant.backdrop.effects.vibrancy
 fun LiquidFolderIcon(
     modifier: Modifier = Modifier,
     dark: Boolean = true,
-    tint: Color = Color(0xFF4DA3FF)
+    // follows "App color" in Settings
+    tint: Color = com.mfp.filemanager.ui.theme.GlassConfig.accent
 ) {
     val scene = rememberLayerBackdrop()
+    // light / deep shades of the chosen colour: the glass refracts a tiny scene made of them
+    val lightTone = androidx.compose.ui.graphics.lerp(tint, Color.White, 0.65f)
+    val deepTone = androidx.compose.ui.graphics.lerp(tint, Color.Black, 0.42f)
+    val glowTone = androidx.compose.ui.graphics.lerp(tint, Color.White, 0.35f)
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val s: Dp = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -53,7 +58,7 @@ fun LiquidFolderIcon(
                 .drawBehind {
                     drawRect(
                         Brush.linearGradient(
-                            listOf(Color(0xFFB8F0FF), tint, Color(0xFF2347C9)),
+                            listOf(lightTone, tint, deepTone),
                             start = Offset.Zero,
                             end = Offset(size.width, size.height)
                         )
@@ -64,7 +69,7 @@ fun LiquidFolderIcon(
                         center = Offset(size.width * 0.22f, size.height * 0.20f)
                     )
                     drawCircle(
-                        Color(0xFFB27BFF).copy(0.55f),
+                        glowTone.copy(0.55f),
                         radius = size.minDimension * 0.30f,
                         center = Offset(size.width * 0.86f, size.height * 0.92f)
                     )
@@ -112,10 +117,13 @@ private fun GlassPiece(
                 shape = { RoundedCornerShape(radius) },
                 effects = {
                     vibrancy()
-                    blur(1f.dp.toPx())
-                    lens(4f.dp.toPx(), 9f.dp.toPx())
+                    val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(1f)
+                    if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
+                    val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(4f, 2f)
+                    val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(9f, 2f)
+                    if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
                 },
-                onDrawSurface = { drawRect(surface) }
+                onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(surface)) }
             )
     )
 }

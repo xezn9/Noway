@@ -18,6 +18,7 @@ enum class FileKind(
     val glyph: GlassGlyph,
     val label: String? = null
 ) {
+    // tint is replaced at draw time by the "App color" (see GlassFileIconDrawable)
     FOLDER(Color.parseColor("#4DA3FF"), GlassShape.FOLDER, GlassGlyph.NONE),
 
     // ---- the special ones ----

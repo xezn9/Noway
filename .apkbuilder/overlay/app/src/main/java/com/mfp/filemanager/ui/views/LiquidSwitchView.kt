@@ -25,6 +25,10 @@ import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.catalog.components.LiquidToggle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.mfp.filemanager.R
 import com.mfp.filemanager.ui.util.Immersive
 
 /**
@@ -44,6 +48,8 @@ class LiquidSwitchView @JvmOverloads constructor(
 
     private val textColorInt: Int
     private val windowBg: Int
+    private val rowBg: Int      // what the glass thumb refracts: the page, or the card it sits on
+    private val onCard: Boolean
     private val dark: Boolean = Immersive.isDarkTheme(context)
 
     init {
@@ -53,6 +59,13 @@ class LiquidSwitchView @JvmOverloads constructor(
         }
         textColorInt = themeColor(android.R.attr.textColorPrimary, if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt())
         windowBg = themeColor(android.R.attr.colorBackground, if (dark) 0xFF121212.toInt() else 0xFFFFFFFF.toInt())
+        var card = false
+        attrs?.let {
+            val a = context.obtainStyledAttributes(it, R.styleable.LiquidSwitchView)
+            try { card = a.getBoolean(R.styleable.LiquidSwitchView_onCard, false) } finally { a.recycle() }
+        }
+        onCard = card
+        rowBg = if (card) themeColor(com.google.android.material.R.attr.colorSurfaceContainer, windowBg) else windowBg
     }
 
     // The settings screen echoes the saved value back (often a stale one, because the DataStore
@@ -105,12 +118,12 @@ class LiquidSwitchView @JvmOverloads constructor(
                 Modifier
                     .matchParentSize()
                     .layerBackdrop(scene)
-                    .background(Color(windowBg))
+                    .background(Color(rowBg))
             )
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 18.dp),
+                    .padding(horizontal = if (onCard) 20.dp else 24.dp, vertical = if (onCard) 16.dp else 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -118,6 +131,9 @@ class LiquidSwitchView @JvmOverloads constructor(
                     text = textState,
                     color = Color(textColorInt),
                     fontSize = 16.sp,
+                    // follow the layout direction (right in RTL) whatever language the label is in,
+                    // so it lines up with the other rows instead of jumping left for English text
+                    textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left,
                     // tapping the label flips the switch too (the toggle itself handles its own taps)
                     modifier = Modifier
                         .weight(1f)

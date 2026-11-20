@@ -154,10 +154,13 @@ fun LiquidDialogHost(backdrop: Backdrop, dark: Boolean) {
                         shape = { RoundedCornerShape(36.dp) },
                         effects = {
                             vibrancy()
-                            blur(14f.dp.toPx())
-                            lens(16f.dp.toPx(), 32f.dp.toPx())
+                            val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(14f)
+                            if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
+                            val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(16f)
+                            val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(32f)
+                            if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
                         },
-                        onDrawSurface = { drawRect(containerColor) }
+                        onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(containerColor, minAlpha = 0.30f)) }
                     )
                     .pointerInput(Unit) { detectTapGestures { } }
                     .padding(horizontal = 24.dp, vertical = 28.dp),

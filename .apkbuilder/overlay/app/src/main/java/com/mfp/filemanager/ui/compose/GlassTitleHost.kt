@@ -202,12 +202,15 @@ private fun GlassTitle(p: TitleProxy, backdrop: Backdrop) {
                 shape = { Capsule() },
                 effects = {
                     vibrancy()
-                    blur(6f.dp.toPx())
-                    lens(10f.dp.toPx(), 20f.dp.toPx())
+                    val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(6f)
+                    if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
+                    val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(10f)
+                    val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(20f)
+                    if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
                 },
                 onDrawSurface = {
-                    drawRect(tint)
-                    drawRect(sheen)
+                    drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(tint))
+                    drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(sheen))
                 }
             ),
         contentAlignment = Alignment.Center

@@ -24,6 +24,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.mfp.filemanager.ui.compose.GlassTitleState
 import com.mfp.filemanager.ui.util.Immersive
 import androidx.core.widget.NestedScrollView
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.mfp.filemanager.R
@@ -50,13 +51,15 @@ object GlassHeader {
         styleTitle(header)
         header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> styleTitle(header) }
 
-        slideContentUnderHeader(root, header)
+        val syncScroll = slideContentUnderHeader(root, header)
 
         // header drops in softly
         header.alpha = 0f
         header.translationY = -dp(ctx, 14f)
         header.animate().alpha(1f).translationY(0f).setDuration(380)
-            .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
+            .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+            .withEndAction { syncScroll?.invoke() } // the animation ends at 0: put it back where the scroll wants it
+            .start()
     }
 
     // ------------------------------------------------------------------ finding things
@@ -130,7 +133,7 @@ object GlassHeader {
 
     // ------------------------------------------------------------------ content under the header
 
-    private fun slideContentUnderHeader(root: View, header: View) {
+    private fun slideContentUnderHeader(root: View, header: View): (() -> Unit)? {
         val swipe = root.findViewById<View>(R.id.swipe_refresh)
         val extra = root.findViewById<View>(R.id.card_search) // Home's fallback search card
         val parent = header.parent
@@ -148,9 +151,9 @@ object GlassHeader {
         } else if (parent is FrameLayout) {
             under = true // Settings: scroll view and header share one FrameLayout
         }
-        if (!under) return
+        if (!under) return null
 
-        val scroll = findFirst(root) { (it is RecyclerView || it is NestedScrollView) } as? ViewGroup ?: return
+        val scroll = findFirst(root) { (it is RecyclerView || it is NestedScrollView) } as? ViewGroup ?: return null
         val baseTop = scroll.paddingTop
         scroll.clipToPadding = false
 
@@ -166,6 +169,55 @@ object GlassHeader {
         header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> update() }
         extra?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> update() }
         header.post { update() }
+
+        return attachScrollAway(scroll, header)
+    }
+
+    /**
+     * The title belongs to the page: it moves up together with the content when the page is
+     * scrolled (and comes back when scrolled back to the top). A toolbar that currently shows
+     * actions (selection mode, paste ...) stays pinned so the actions never scroll out of reach.
+     */
+    private fun attachScrollAway(scroll: ViewGroup, header: View): () -> Unit {
+        fun scrolledBy(): Int = when (scroll) {
+            is RecyclerView -> {
+                val lm = scroll.layoutManager as? LinearLayoutManager
+                val first = lm?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+                when {
+                    lm == null || scroll.childCount == 0 -> 0
+                    first == 0 -> lm.findViewByPosition(0)
+                        ?.let { (scroll.paddingTop - it.top).coerceAtLeast(0) } ?: 0
+                    first > 0 -> Int.MAX_VALUE
+                    else -> 0
+                }
+            }
+            is NestedScrollView -> scroll.scrollY
+            else -> 0
+        }
+
+        fun sync() {
+            val bar = header as? Toolbar
+            val pinned = bar != null && bar.menu.hasVisibleItems()
+            val y = if (pinned) 0 else minOf(scrolledBy(), header.height)
+            header.translationY = -y.toFloat()
+        }
+
+        when (scroll) {
+            is RecyclerView -> scroll.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    sync()
+                }
+            })
+            is NestedScrollView -> scroll.setOnScrollChangeListener(
+                NestedScrollView.OnScrollChangeListener { _, _, _, _, _ -> sync() }
+            )
+        }
+        scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> sync() }
+        header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> sync() }
+        header.post { sync() }
+
+        val handle: () -> Unit = { sync() }
+        return handle
     }
 
     // ------------------------------------------------------------------ helpers

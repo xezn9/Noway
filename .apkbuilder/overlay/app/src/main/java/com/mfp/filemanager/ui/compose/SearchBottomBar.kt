@@ -71,10 +71,13 @@ private fun Modifier.glassPill(backdrop: Backdrop, container: Color): Modifier =
         shape = { Capsule() },
         effects = {
             vibrancy()
-            blur(8f.dp.toPx())
-            lens(24f.dp.toPx(), 24f.dp.toPx())
+            val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(8f)
+            if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
+            val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
+            val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
+            if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
         },
-        onDrawSurface = { drawRect(container) }
+        onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(container)) }
     )
 
 /**
@@ -215,8 +218,11 @@ fun SearchBottomBar(
                             shape = { Capsule() },
                             effects = {
                                 vibrancy()
-                                blur(8f.dp.toPx())
-                                lens(24f.dp.toPx(), 24f.dp.toPx())
+                                val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(8f)
+                                if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
+                                val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
+                                val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
+                                if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
                             },
                             // exactly the LiquidButton press effect; fades out while the field is
                             // open (k) so typing / selecting text doesn't wobble the field
@@ -245,7 +251,7 @@ fun SearchBottomBar(
                                         maxDragScale * abs(sin(offsetAngle) * offset.y / size.maxDimension) *
                                         (height / width).fastCoerceAtMost(1f)
                             },
-                            onDrawSurface = { drawRect(containerColor) }
+                            onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(containerColor)) }
                         )
                         .clickable(noRipple, indication = null) {
                             if (!expanded) {

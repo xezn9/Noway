@@ -9,6 +9,7 @@ import androidx.activity.addCallback
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
@@ -36,12 +37,22 @@ class FileBrowserFragment : Fragment() {
     private var _binding: FragmentFileBrowserBinding? = null
     private val binding get() = _binding!!
 
-    private val viewModel: HomeViewModel by viewModels {
-        HomeViewModelFactory(
+    /**
+     * Root mode = the Home tab of the pager: lists the main storage folders, has no back arrow,
+     * and shares the activity-wide HomeViewModel so the bottom search bar searches everywhere.
+     */
+    private val isRoot: Boolean get() = arguments?.getBoolean(ARG_ROOT, false) == true
+
+    private val viewModel: HomeViewModel by lazy {
+        val factory = HomeViewModelFactory(
             FileRepository(requireContext().applicationContext),
             SettingsRepository(requireContext().applicationContext)
         )
+        val owner: androidx.lifecycle.ViewModelStoreOwner = if (isRoot) requireActivity() else this
+        ViewModelProvider(owner, factory)[HomeViewModel::class.java]
     }
+
+    private var resumedOnce = false
     
     private val audioViewModel: AudioViewModel by activityViewModels()
     // owns the bottom search bar state (shared with MainActivity)
@@ -71,7 +82,7 @@ class FileBrowserFragment : Fragment() {
         // But let's assume raw string for now.
         currentPath = rawPath
         // the bottom search bar searches ONLY inside this folder while it is open
-        viewModel.setSearchScope(rawPath.ifEmpty { null })
+        viewModel.setSearchScope(if (isRoot) null else rawPath.ifEmpty { null })
 
         setupToolbar()
         setupRecyclerView()
@@ -91,6 +102,13 @@ class FileBrowserFragment : Fragment() {
             }
         }
         
+        if (isRoot) {
+            // room for the floating bottom bar under the last folder
+            binding.recyclerFiles.setPadding(
+                0, 0, 0, (120 * resources.displayMetrics.density).toInt()
+            )
+        }
+
         // Initial Load
         if (currentPath.isNotEmpty()) {
             viewModel.loadFiles(currentPath)
@@ -110,7 +128,19 @@ class FileBrowserFragment : Fragment() {
         // Let's implement Back Press to go UP directory if allowed, else pop.
         
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) {
-            if (mainViewModel.searchExpanded.value || mainViewModel.browserSearchQuery.value.isNotEmpty()) {
+            if (isRoot) {
+                if (viewModel.searchQuery.value.isNotEmpty() || mainViewModel.searchExpanded.value) {
+                    viewModel.clearSearch()
+                    mainViewModel.setSearchExpanded(false)
+                } else if (viewModel.isBrowserSelectionMode.value) {
+                    viewModel.exitBrowserSelectionMode()
+                } else {
+                    // nothing of ours to close: let the activity handle Back (other tab -> Home, or exit)
+                    isEnabled = false
+                    requireActivity().onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            } else if (mainViewModel.searchExpanded.value || mainViewModel.browserSearchQuery.value.isNotEmpty()) {
                 // first Back closes the bottom search bar, second Back leaves the folder
                 mainViewModel.setBrowserSearchQuery("")
                 mainViewModel.setSearchExpanded(false)
@@ -159,6 +189,10 @@ class FileBrowserFragment : Fragment() {
     }
 
     private fun setupToolbar() {
+        if (isRoot) {
+            binding.toolbar.navigationIcon = null
+            return
+        }
         binding.toolbar.setNavigationOnClickListener {
             findNavController().popBackStack()
         }
@@ -225,13 +259,19 @@ class FileBrowserFragment : Fragment() {
             binding.toolbar.inflateMenu(R.menu.menu_file_browser)
             // Fix: Show "Internal Storage" for root path
             val title = if (currentPath == "/storage/emulated/0") "Internal Storage" else File(currentPath).name
-            binding.toolbar.title = if (title.isEmpty()) "Internal Storage" else title
+            binding.toolbar.title = if (isRoot) "Home" else if (title.isEmpty()) "Internal Storage" else title
             
             // Fix: User-friendly subtitle path
             binding.toolbar.subtitle = null
-            binding.toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
-            binding.toolbar.setNavigationOnClickListener {
-                findNavController().popBackStack()
+            if (isRoot) {
+                // Home is the top of the app: nothing to go back to
+                binding.toolbar.navigationIcon = null
+                binding.toolbar.setNavigationOnClickListener(null)
+            } else {
+                binding.toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
+                binding.toolbar.setNavigationOnClickListener {
+                    findNavController().popBackStack()
+                }
             }
             binding.toolbar.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
@@ -385,6 +425,9 @@ class FileBrowserFragment : Fragment() {
                     ) { files, searchResults, query ->
                         if (query.isEmpty()) {
                             files 
+                        } else if (isRoot) {
+                            // Home: the bottom search bar searches the whole storage
+                            searchResults
                         } else {
                             // Filter search results by current path to keep context
                             searchResults.filter { it.path.startsWith(currentPath.trimEnd('/') + "/") }
@@ -395,7 +438,7 @@ class FileBrowserFragment : Fragment() {
                         binding.textEmpty.text = if (viewModel.searchQuery.value.isNotEmpty()) "No results found" else "No files found"
                     }
                 }
-                launch {
+                if (!isRoot) launch {
                     // text from the bottom search bar -> search inside this folder only
                     mainViewModel.browserSearchQuery.collect { q ->
                         viewModel.updateSearchQuery(q)
@@ -462,8 +505,23 @@ class FileBrowserFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Home stays alive under the folders you open: refresh it when you come back
+        if (isRoot) {
+            if (resumedOnce && _binding != null && currentPath.isNotEmpty()) {
+                viewModel.loadFiles(currentPath, true)
+            }
+            resumedOnce = true
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        const val ARG_ROOT = "root"
     }
 }
