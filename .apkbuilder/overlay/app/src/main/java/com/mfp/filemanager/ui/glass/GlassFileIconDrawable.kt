@@ -73,6 +73,9 @@ class GlassFileIconDrawable(
     private val glyphRect = RectF()  // where the glyph lives
     private var labelY = 0f
     private var shadowDy = 0f
+    private val iosBack = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val iosFront = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val iosLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private var hasFold = false
     private var hasFront = false
 
@@ -147,6 +150,17 @@ class GlassFileIconDrawable(
 
         // ---- shaders (all relative to the badge rect) ----
         val cx = r.centerX()
+        if (kind.shape == GlassShape.FOLDER) {
+            // iOS-style folder: solid two-tone blue, lighter front panel, thin top highlight
+            iosBack.shader = LinearGradient(cx, r.top, cx, r.bottom,
+                Color.parseColor("#3D9CF2"), Color.parseColor("#1F76D8"), Shader.TileMode.CLAMP)
+            val fTop = r.top + rh * 0.38f
+            iosFront.shader = LinearGradient(cx, fTop, cx, r.bottom,
+                Color.parseColor("#7CCBFF"), Color.parseColor("#47A9F7"), Shader.TileMode.CLAMP)
+            iosLine.strokeWidth = maxOf(1f, w * 0.03f)
+            iosLine.color = Color.argb(0xB0, 255, 255, 255)
+            return
+        }
         fillPaint.shader = LinearGradient(
             cx, r.top, cx, r.bottom,
             intArrayOf(withA(light, 0xE6), withA(tint, 0xBE), withA(deep, 0xD2)),
@@ -204,6 +218,17 @@ class GlassFileIconDrawable(
 
     override fun draw(canvas: Canvas) {
         if (bounds.isEmpty || r.isEmpty) return
+
+        if (kind.shape == GlassShape.FOLDER) {
+            canvas.save(); canvas.translate(0f, shadowDy); canvas.drawPath(body, shadowPaint); canvas.restore()
+            canvas.drawPath(body, iosBack)
+            canvas.drawPath(front, iosFront)
+            // thin light edge along the top of the front panel
+            val top = r.top + r.height() * 0.38f
+            val inset = r.width() * 0.13f
+            canvas.drawLine(r.left + inset, top + iosLine.strokeWidth / 2f, r.right - inset, top + iosLine.strokeWidth / 2f, iosLine)
+            return
+        }
 
         // soft drop shadow
         canvas.save()

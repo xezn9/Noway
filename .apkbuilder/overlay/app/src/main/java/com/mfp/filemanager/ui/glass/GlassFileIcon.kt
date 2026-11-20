@@ -43,7 +43,28 @@ object GlassFileIcon {
         }
     }
 
+    /** Real app icon taken from the apk itself; glass APK badge while loading / if unreadable. */
+    private fun bindApk(iv: ImageView, file: FileModel, ext: String) {
+        val key = ApkIconLoader.key(file.path, file.dateModified)
+        iv.tag = key
+        fun show(bmp: Bitmap) {
+            iv.scaleType = ImageView.ScaleType.FIT_CENTER
+            iv.setPadding(2, 2, 2, 2)
+            iv.setImageBitmap(bmp)
+        }
+        val cached = ApkIconLoader.cached(key)
+        if (cached != null) {
+            show(cached)
+            return
+        }
+        iv.setImageDrawable(GlassFileIconDrawable(FileKind.APK, ext))
+        ApkIconLoader.load(iv.context, file.path, key) { bmp ->
+            if (iv.tag == key) show(bmp) // row may have been recycled meanwhile
+        }
+    }
+
     fun bind(iv: ImageView, file: FileModel, thumbnailSeed: Long) {
+        iv.tag = null
         iv.dispose() // cancel a thumbnail request of the previous row that used this view
         iv.colorFilter = null
         iv.setPadding(0, 0, 0, 0)
@@ -58,8 +79,12 @@ object GlassFileIcon {
         val ext = FileKind.extensionOf(file.name)
         val kind = FileKind.of(file.name, file.isDirectory, file.type)
 
+        if (kind == FileKind.APK && !file.isDirectory) {
+            bindApk(iv, file, ext)
+            return
+        }
+
         val thumbnail = !file.isDirectory && when {
-            kind == FileKind.APK -> false // the glass APK badge is the look we want here
             file.type == FileType.IMAGE || file.type == FileType.VIDEO || file.type == FileType.AUDIO -> true
             kind == FileKind.PDF -> true
             else -> false

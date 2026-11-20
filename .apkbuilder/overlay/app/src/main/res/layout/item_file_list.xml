@@ -173,8 +173,7 @@
             android:layout_weight="1">
             <ImageView
                 style="@style/FileActionButtonIconStyle"
-                android:src="@drawable/ic_delete"
-                android:tint="#FF5252" />
+                android:src="@drawable/ic_delete" />
             <TextView
                 style="@style/FileActionButtonTextStyle"
                 android:text="Delete"
