@@ -1,0 +1,52 @@
+<resources>
+    <string name="app_name">"MyFiles+"</string>
+    <string name="trash_screen_title">Bin</string>
+    <string name="trash_empty_message">Trash is empty</string>
+    <string name="restore_files_title">Restore Files</string>
+    <string name="restore_files_message">Are you sure you want to restore the selected files?</string>
+    <string name="delete_permanently_title">Delete Files Permanently</string>
+    <string name="delete_permanently_message">Are you sure you want to permanently delete the selected files? This action cannot be undone.</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_delete_forever">Delete Forever</string>
+    <string name="action_empty_trash">Empty Trash</string>
+    <string name="restore_all_title">Restore All Files</string>
+    <string name="restore_all_message">Are you sure you want to restore all files from the trash?</string>
+    <string name="empty_trash_title">Empty Trash</string>
+    <string name="empty_trash_message">Are you sure you want to permanently delete all files? This action cannot be undone.</string>
+    <string name="restore_all">Restore All</string>
+    <string name="delete_all">Delete All</string>
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
+    <string name="selected_count">%d selected</string>
+    <string name="original_path_label">Original: %1$s</string>
+    <string name="deleted_date_label">Deleted: %1$s</string>
+    <string name="back_desc">Back</string>
+    <string name="more_options_desc">More Options</string>
+    <string name="clear_selection_desc">Clear Selection</string>
+
+    <string name="storage_usage_format">%1$s / %2$s</string>
+    <string name="storage_percent_format">%1$d%%</string>
+    <string name="storage_forecast_format">Your storage is %1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_amoled">AMOLED</string>
+    <string name="settings_theme_system">System Default</string>
+    <string name="settings_trash_retention_days">%1$d Days</string>
+    <string name="settings_checking_updates">Checking for updates...</string>
+    <string name="settings_up_to_date">App is up to date</string>
+    <string name="settings_update_available_title">New Update Available</string>
+    <string name="settings_update_available_msg">Version %1$s is available. Would you like to download it?</string>
+    <string name="settings_action_download">Download</string>
+    <string name="settings_action_later">Later</string>
+    <string name="action_play_pause">Play or Pause</string>
+    <string name="video_counter_format">%1$d / %2$d</string>
+    <string name="back">Back</string>
+    <string name="action_share">Share</string>
+    <string name="action_info">Info</string>
+    <string name="label_directory">Directory</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_music">Music</string>
+    <string name="tab_settings">Settings</string>
+</resources>

@@ -1,0 +1,2 @@
+app/src/main/res/color/nav_item_tint.xml
+app/src/main/res/menu/bottom_nav_menu.xml
