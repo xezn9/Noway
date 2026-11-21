@@ -40,13 +40,13 @@ class AppSettings(context: Context) {
         I18n.arabic = arabic
     }
 
-    fun setArabic(v: Boolean) {
+    fun changeLanguage(v: Boolean) {
         arabic = v
         I18n.arabic = v
         prefs.edit().putBoolean("lang_ar", v).apply()
     }
 
-    fun setShowSplash(v: Boolean) {
+    fun changeSplash(v: Boolean) {
         showSplash = v
         prefs.edit().putBoolean("show_splash", v).apply()
     }

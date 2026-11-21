@@ -585,7 +585,7 @@ fun SettingsScreen(
                     listOf(true to "العربية", false to "English").forEach { (ar, label) ->
                         val on = settings.arabic == ar
                         LiquidButton(
-                            onClick = { settings.setArabic(ar) },
+                            onClick = { settings.changeLanguage(ar) },
                             backdrop = backdrop,
                             modifier = Modifier.weight(1f),
                             tint = if (on) LocalAccent.current else Color.Unspecified,
@@ -606,7 +606,7 @@ fun SettingsScreen(
                     title = "Splash screen",
                     subtitle = "Show the animated splash when the app opens",
                     checked = settings.showSplash,
-                    onChange = { settings.setShowSplash(it) },
+                    onChange = { settings.changeSplash(it) },
                     backdrop = backdrop,
                     colors = colors
                 )
