@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -22,6 +23,8 @@ class TaskState {
     var progress by mutableFloatStateOf(0f)
     var label by mutableStateOf("")
     var job: Job? = null
+    /** The tab (page) that started the task: the progress card lives on that page only. */
+    var tab by mutableIntStateOf(0)
 }
 
 class DialogData(

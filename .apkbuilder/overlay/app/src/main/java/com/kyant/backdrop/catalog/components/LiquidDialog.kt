@@ -1,5 +1,7 @@
 package com.kyant.backdrop.catalog.components
 
+import com.kyant.backdrop.catalog.utils.LocalGlassLevels
+import com.kyant.backdrop.catalog.utils.scaleAlpha
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -55,6 +57,7 @@ fun LiquidDialog(
     confirmTint: Color = Color(0xFF0088FF),
     modifier: Modifier = Modifier
 ) {
+    val glass = LocalGlassLevels.current
     BackHandler(enabled = visible, onBack = onDismiss)
 
     val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -99,10 +102,10 @@ fun LiquidDialog(
                         shape = { RoundedCornerShape(36.dp) },
                         effects = {
                             vibrancy()
-                            blur(14f.dp.toPx())
-                            lens(16f.dp.toPx(), 32f.dp.toPx())
+                            blur((14f.dp.toPx()) * glass.blurK)
+                            lens((16f.dp.toPx()) * glass.lensK, (32f.dp.toPx()) * glass.lensK)
                         },
-                        onDrawSurface = { drawRect(containerColor) }
+                        onDrawSurface = { drawRect(containerColor.scaleAlpha(glass.opacityK)) }
                     )
                     // swallow taps so touching the panel doesn't dismiss
                     .pointerInput(Unit) { detectTapGestures { } }

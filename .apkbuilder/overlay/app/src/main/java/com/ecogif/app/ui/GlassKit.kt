@@ -37,6 +37,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import com.kyant.backdrop.catalog.utils.LocalGlassLevels
+import com.kyant.backdrop.catalog.utils.scaleAlpha
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -88,6 +91,12 @@ object EcoIcons {
             "M18,4l2,4h-3l-2,-4h-2l2,4h-3l-2,-4H8l2,4H7L5,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V4h-4z"
         )
     }
+    val Settings: ImageVector by lazy {
+        icon(
+            "settings",
+            "M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94c0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6S13.98,15.6 12,15.6z"
+        )
+    }
     val Gif: ImageVector by lazy {
         icon(
             "gif",
@@ -105,44 +114,40 @@ class Palette(
     val b1: Color, val b2: Color, val b3: Color, val b4: Color,
 )
 
-fun paletteFor(tab: Int, dark: Boolean): Palette = when (tab) {
-    // 1: video -> GIF  (sunset)
-    1 -> if (dark) Palette(
-        Color(0xFFFF7A2F), Color(0xFFFFC857),
-        Color(0xFF1F0A12), Color(0xFF3B1A14), Color(0xFF24100A),
-        Color(0xFFFF7A45).copy(0.55f), Color(0xFFFF4D8D).copy(0.50f),
-        Color(0xFFFFC857).copy(0.40f), Color(0xFFE8590C).copy(0.50f)
+/** Builds a whole wallpaper palette (gradient + glow blobs + accent) from one chosen colour. */
+fun paletteFor(base: Color, dark: Boolean): Palette {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(base.toArgb(), hsv)
+    val h = hsv[0]
+    fun hue(d: Float) = ((h + d) % 360f + 360f) % 360f
+    return if (dark) Palette(
+        base, Color.hsv(hue(40f), 0.55f, 1f),
+        Color.hsv(h, 0.80f, 0.10f), Color.hsv(h, 0.75f, 0.23f), Color.hsv(h, 0.80f, 0.14f),
+        Color.hsv(h, 0.60f, 0.95f, 0.55f), Color.hsv(hue(32f), 0.70f, 0.90f, 0.50f),
+        Color.hsv(hue(-32f), 0.60f, 0.95f, 0.40f), base.copy(alpha = 0.55f)
     ) else Palette(
-        Color(0xFFF2701F), Color(0xFFFFB02E),
-        Color(0xFFFFF1E8), Color(0xFFFFE0CC), Color(0xFFFFF4D6),
-        Color(0xFFFFB38A).copy(0.75f), Color(0xFFFF9EC0).copy(0.75f),
-        Color(0xFFFFE08A).copy(0.80f), Color(0xFFFFA46B).copy(0.65f)
-    )
-    // 2: GIF -> video  (ocean / violet)
-    2 -> if (dark) Palette(
-        Color(0xFF4C7DFF), Color(0xFF9B6CFF),
-        Color(0xFF0A0F24), Color(0xFF14204A), Color(0xFF0A1030),
-        Color(0xFF5B8CFF).copy(0.55f), Color(0xFF9B5CFF).copy(0.50f),
-        Color(0xFF3FD0E8).copy(0.40f), Color(0xFF3A5BDB).copy(0.55f)
-    ) else Palette(
-        Color(0xFF3D6BF0), Color(0xFF8E5CF5),
-        Color(0xFFECF1FF), Color(0xFFDCE5FF), Color(0xFFEFE6FF),
-        Color(0xFF9DB8FF).copy(0.75f), Color(0xFFC6A8FF).copy(0.75f),
-        Color(0xFF9FE4F2).copy(0.80f), Color(0xFF8AA4F5).copy(0.65f)
-    )
-    // 0: resize  (eco green)
-    else -> if (dark) Palette(
-        EcoGreen, Color(0xFFB6F25C),
-        Color(0xFF031A13), Color(0xFF0A3B2B), Color(0xFF052418),
-        Color(0xFF3FD98B).copy(0.55f), Color(0xFF17B3A6).copy(0.50f),
-        Color(0xFFB6F25C).copy(0.40f), Color(0xFF1FA971).copy(0.55f)
-    ) else Palette(
-        EcoGreen, Color(0xFF8BD62F),
-        Color(0xFFEAFBF0), Color(0xFFD5F5E3), Color(0xFFF3FBD8),
-        Color(0xFF7BE3A5).copy(0.75f), Color(0xFF8EE8DA).copy(0.75f),
-        Color(0xFFD7F57F).copy(0.80f), Color(0xFF5ED79A).copy(0.65f)
+        base, Color.hsv(hue(40f), 0.70f, 0.95f),
+        Color.hsv(h, 0.07f, 1f), Color.hsv(h, 0.16f, 1f), Color.hsv(hue(20f), 0.10f, 1f),
+        Color.hsv(h, 0.42f, 1f, 0.75f), Color.hsv(hue(32f), 0.40f, 1f, 0.75f),
+        Color.hsv(hue(-32f), 0.45f, 1f, 0.80f), Color.hsv(h, 0.55f, 0.95f, 0.65f)
     )
 }
+
+class Swatch(val name: String, val color: Color)
+
+/** The 20 colours a page can use. */
+val Swatches = listOf(
+    Swatch("Green", Color(0xFF1FA971)), Swatch("Orange", Color(0xFFFF7A2F)),
+    Swatch("Blue", Color(0xFF4C7DFF)), Swatch("Red", Color(0xFFE5484D)),
+    Swatch("Pink", Color(0xFFF0509A)), Swatch("Purple", Color(0xFF9B5CFF)),
+    Swatch("Teal", Color(0xFF14B8A6)), Swatch("Cyan", Color(0xFF22C5E8)),
+    Swatch("Lime", Color(0xFF84CC16)), Swatch("Yellow", Color(0xFFF5C518)),
+    Swatch("Amber", Color(0xFFF59E0B)), Swatch("Coral", Color(0xFFFF6B6B)),
+    Swatch("Indigo", Color(0xFF5B5BD6)), Swatch("Violet", Color(0xFF8E4EC6)),
+    Swatch("Magenta", Color(0xFFD6409F)), Swatch("Mint", Color(0xFF3DDC84)),
+    Swatch("Sky", Color(0xFF38BDF8)), Swatch("Gold", Color(0xFFD4A017)),
+    Swatch("Rose", Color(0xFFFB7185)), Swatch("Slate", Color(0xFF64748B)),
+)
 
 /** Colours glide smoothly from one tab's palette to the next. */
 @Composable
@@ -202,6 +207,7 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val glass = LocalGlassLevels.current
     Column(
         modifier
             .fillMaxWidth()
@@ -210,10 +216,10 @@ fun GlassCard(
                 shape = { RoundedCornerShape(28.dp) },
                 effects = {
                     vibrancy()
-                    blur(10f.dp.toPx())
-                    lens(10f.dp.toPx(), 20f.dp.toPx())
+                    blur(10f.dp.toPx() * glass.blurK)
+                    lens(10f.dp.toPx() * glass.lensK, 20f.dp.toPx() * glass.lensK)
                 },
-                onDrawSurface = { drawRect(colors.card) }
+                onDrawSurface = { drawRect(colors.card.scaleAlpha(glass.opacityK)) }
             )
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),

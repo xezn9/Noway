@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.catalog.components.LiquidButton
+import com.kyant.backdrop.catalog.utils.LocalGlassLevels
+import com.kyant.backdrop.catalog.utils.scaleAlpha
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
@@ -66,6 +68,7 @@ fun GlassTile(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val glass = LocalGlassLevels.current
     Column(
         modifier
             .drawBackdrop(
@@ -73,10 +76,10 @@ fun GlassTile(
                 shape = { RoundedCornerShape(22.dp) },
                 effects = {
                     vibrancy()
-                    blur(8f.dp.toPx())
-                    lens(8f.dp.toPx(), 16f.dp.toPx())
+                    blur(8f.dp.toPx() * glass.blurK)
+                    lens(8f.dp.toPx() * glass.lensK, 16f.dp.toPx() * glass.lensK)
                 },
-                onDrawSurface = { drawRect(colors.card) }
+                onDrawSurface = { drawRect(colors.card.scaleAlpha(glass.opacityK)) }
             )
             .padding(horizontal = 12.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),

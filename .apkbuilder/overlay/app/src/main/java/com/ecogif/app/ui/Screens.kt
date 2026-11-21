@@ -1,11 +1,24 @@
 package com.ecogif.app.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -34,14 +47,17 @@ private fun formatTime(sec: Float): String {
 }
 
 @Composable
-private fun ScreenColumn(content: @Composable () -> Unit) {
+private fun ScreenColumn(header: @Composable () -> Unit, content: @Composable () -> Unit) {
+    // the whole page scrolls (header included) and fills the screen edge to edge
     Column(
         Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        header()
         content()
         Spacer(Modifier.navigationBarsPadding().height(130.dp))
     }
@@ -138,10 +154,11 @@ fun ResizeScreen(
     task: TaskState,
     backdrop: Backdrop,
     colors: EcoColors,
+    header: @Composable () -> Unit,
     onPick: () -> Unit,
     onRun: () -> Unit,
 ) {
-    ScreenColumn {
+    ScreenColumn(header) {
         val info = state.info
         Staggered(0) {
             PickCard(
@@ -286,10 +303,11 @@ fun VideoToGifScreen(
     task: TaskState,
     backdrop: Backdrop,
     colors: EcoColors,
+    header: @Composable () -> Unit,
     onPick: () -> Unit,
     onRun: () -> Unit,
 ) {
-    ScreenColumn {
+    ScreenColumn(header) {
         val info = state.info
         Staggered(0) {
             PickCard(
@@ -408,10 +426,11 @@ fun GifToVideoScreen(
     task: TaskState,
     backdrop: Backdrop,
     colors: EcoColors,
+    header: @Composable () -> Unit,
     onPick: () -> Unit,
     onRun: () -> Unit,
 ) {
-    ScreenColumn {
+    ScreenColumn(header) {
         val info = state.info
         Staggered(0) {
             PickCard(
@@ -489,6 +508,139 @@ fun GifToVideoScreen(
                     onClick = onRun,
                     backdrop = backdrop
                 )
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ settings
+
+private val pageNames = listOf("Resize", "To GIF", "To Video")
+
+@Composable
+private fun SwatchGrid(selected: Int, onPick: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Swatches.chunked(5).forEachIndexed { r, row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                row.forEachIndexed { c, sw ->
+                    val index = r * 5 + c
+                    val on = index == selected
+                    val scale by animateFloatAsState(if (on) 1.14f else 1f, label = "swatch")
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .clip(CircleShape)
+                            .background(sw.color)
+                            .border(
+                                if (on) 3.dp else 1.dp,
+                                if (on) Color.White else Color.White.copy(0.35f),
+                                CircleShape
+                            )
+                            .clickable { onPick(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (on) Text("✓", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    settings: AppSettings,
+    backdrop: Backdrop,
+    colors: EcoColors,
+    header: @Composable () -> Unit,
+) {
+    ScreenColumn(header) {
+        Staggered(0) {
+            GlassCard(backdrop, colors) {
+                CardTitle("Page colors", colors)
+                Text(
+                    "Choose a page, then a colour. This page shows a live preview of it.",
+                    color = colors.secondary,
+                    fontSize = 13.sp
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pageNames.forEachIndexed { i, name ->
+                        val on = settings.editTab == i
+                        LiquidButton(
+                            onClick = { settings.editTab = i },
+                            backdrop = backdrop,
+                            modifier = Modifier.weight(1f),
+                            tint = if (on) Swatches[settings.colorIndex(i)].color else Color.Unspecified,
+                            surfaceColor = if (on) Color.Unspecified
+                            else if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+                        ) {
+                            Text(
+                                name,
+                                color = if (on) Color.White else colors.content,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+                val page = settings.editTab
+                SwatchGrid(settings.colorIndex(page)) { settings.setColor(page, it) }
+                Text(
+                    "${pageNames[page]}: ${Swatches[settings.colorIndex(page)].name}",
+                    color = colors.secondary,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        Staggered(1) {
+            GlassCard(backdrop, colors) {
+                CardTitle("Liquid glass", colors)
+                Text(
+                    "Changes every glass surface in the app, live.",
+                    color = colors.secondary,
+                    fontSize = 13.sp
+                )
+                SliderRow(
+                    title = "Blur",
+                    valueText = "${settings.glass.blurPct.roundToInt()}%",
+                    value = settings.glass.blurPct,
+                    onValueChange = { settings.setBlur(it.roundToInt().toFloat()) },
+                    range = 0f..100f,
+                    backdrop = backdrop,
+                    colors = colors
+                )
+                SliderRow(
+                    title = "Transparency",
+                    valueText = "${settings.glass.transparencyPct.roundToInt()}%",
+                    value = settings.glass.transparencyPct,
+                    onValueChange = { settings.setTransparency(it.roundToInt().toFloat()) },
+                    range = 0f..100f,
+                    backdrop = backdrop,
+                    colors = colors
+                )
+                SliderRow(
+                    title = "Refraction",
+                    valueText = "${settings.glass.refractionPct.roundToInt()}%",
+                    value = settings.glass.refractionPct,
+                    onValueChange = { settings.setRefraction(it.roundToInt().toFloat()) },
+                    range = 0f..100f,
+                    backdrop = backdrop,
+                    colors = colors
+                )
+                LiquidButton(
+                    onClick = { settings.resetGlass() },
+                    backdrop = backdrop,
+                    modifier = Modifier.fillMaxWidth(),
+                    surfaceColor = if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+                ) {
+                    Text("Reset glass", color = colors.content, fontWeight = FontWeight.Medium)
+                }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.kyant.backdrop.catalog.components
 
+import com.kyant.backdrop.catalog.utils.LocalGlassLevels
+import com.kyant.backdrop.catalog.utils.scaleAlpha
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -64,6 +66,7 @@ fun LiquidSlider(
     modifier: Modifier = Modifier,
     dark: Boolean = isSystemInDarkTheme()
 ) {
+    val glass = LocalGlassLevels.current
     val isLightTheme = !dark
     val accentColor =
         if (isLightTheme) Color(0xFF0088FF)
@@ -200,10 +203,10 @@ fun LiquidSlider(
                         shape = { Capsule() },
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
-                            blur(8f.dp.toPx() * (1f - progress))
+                            blur((8f.dp.toPx() * (1f - progress)) * glass.blurK)
                             lens(
-                                10f.dp.toPx() * progress,
-                                14f.dp.toPx() * progress,
+                                (10f.dp.toPx() * progress) * glass.lensK,
+                                (14f.dp.toPx() * progress) * glass.lensK,
                                 chromaticAberration = true
                             )
                         },
@@ -237,7 +240,7 @@ fun LiquidSlider(
                         },
                         onDrawSurface = {
                             val progress = dampedDragAnimation.pressProgress
-                            drawRect(Color.White.copy(alpha = 1f - progress))
+                            drawRect(Color.White.copy(alpha = (1f - progress) * glass.opacityK.coerceAtMost(1f)))
                         }
                     )
                     .size(40f.dp, 24f.dp)

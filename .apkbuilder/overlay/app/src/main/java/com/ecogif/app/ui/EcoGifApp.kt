@@ -101,7 +101,8 @@ fun EcoGifApp() {
     val screenBackdrop = rememberLayerBackdrop()
 
     var tab by remember { mutableIntStateOf(0) }
-    val palette = animatedPalette(paletteFor(tab, dark))
+    val settings = remember { AppSettings(context) }
+    val palette = animatedPalette(paletteFor(settings.pageColor(tab), dark))
     val shift by animateFloatAsState(tab.toFloat(), spring(stiffness = 35f), label = "wallpaperShift")
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val task = remember { TaskState() }
@@ -177,6 +178,7 @@ fun EcoGifApp() {
     ) {
         if (task.busy) return
         task.busy = true
+        task.tab = tab
         task.progress = 0f
         task.label = label
         task.job = scope.launch {
@@ -268,14 +270,16 @@ fun EcoGifApp() {
 
     // ------------------------------------------------------------ UI
 
-    CompositionLocalProvider(LocalAccent provides palette.accent) {
+    CompositionLocalProvider(
+        LocalAccent provides palette.accent,
+        com.kyant.backdrop.catalog.utils.LocalGlassLevels provides settings.glass
+    ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(screenBackdrop)) {
             EcoWallpaper(dark, palette, shift, Modifier.fillMaxSize().layerBackdrop(wallBackdrop))
 
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Header(tab, palette, colors)
-                Box(Modifier.weight(1f)) {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize()) {
                     AnimatedContent(
                         targetState = tab,
                         transitionSpec = {
@@ -292,77 +296,49 @@ fun EcoGifApp() {
                         },
                         label = "tabs"
                     ) { t ->
-                        when (t) {
-                            0 -> ResizeScreen(
-                                resize, task, wallBackdrop, colors,
-                                onPick = { pickGifForResize.launch(gifRequest) },
-                                onRun = ::runResize
-                            )
-                            1 -> VideoToGifScreen(
-                                toGif, task, wallBackdrop, colors,
-                                onPick = { pickVideo.launch(videoRequest) },
-                                onRun = ::runVideoToGif
-                            )
-                            else -> GifToVideoScreen(
-                                toVideo, task, wallBackdrop, colors,
-                                onPick = { pickGifForVideo.launch(gifRequest) },
-                                onRun = ::runGifToVideo
-                            )
+                        val header: @Composable () -> Unit = { Header(t, palette, colors) }
+                        // the page and its progress card are one thing: they slide together
+                        Box(Modifier.fillMaxSize()) {
+                            when (t) {
+                                0 -> ResizeScreen(
+                                    resize, task, wallBackdrop, colors, header,
+                                    onPick = { pickGifForResize.launch(gifRequest) },
+                                    onRun = ::runResize
+                                )
+                                1 -> VideoToGifScreen(
+                                    toGif, task, wallBackdrop, colors, header,
+                                    onPick = { pickVideo.launch(videoRequest) },
+                                    onRun = ::runVideoToGif
+                                )
+                                2 -> GifToVideoScreen(
+                                    toVideo, task, wallBackdrop, colors, header,
+                                    onPick = { pickGifForVideo.launch(gifRequest) },
+                                    onRun = ::runGifToVideo
+                                )
+                                else -> SettingsScreen(settings, wallBackdrop, colors, header)
+                            }
+                            if (task.busy && task.tab == t) {
+                                ProgressCard(
+                                    task, wallBackdrop, colors, palette, dark,
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .navigationBarsPadding()
+                                        .padding(start = 20.dp, end = 20.dp, bottom = 100.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            if (task.busy) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(start = 20.dp, end = 20.dp, bottom = 100.dp)
-                ) {
-                    GlassCard(wallBackdrop, colors) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(task.label, color = colors.content, fontWeight = FontWeight.SemiBold)
-                            Text("${(task.progress * 100).roundToInt()}%", color = colors.secondary)
-                        }
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(colors.field)
-                        ) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth(task.progress.coerceIn(0f, 1f))
-                                    .fillMaxHeight()
-                                    .background(palette.accent)
-                            )
-                        }
-                        LiquidButton(
-                            onClick = { task.job?.cancel() },
-                            backdrop = wallBackdrop,
-                            modifier = Modifier.fillMaxWidth(),
-                            surfaceColor = if (dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
-                        ) {
-                            Text("Cancel", color = colors.content, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-
-            val tabLabels = listOf("Resize", "To GIF", "To Video")
-            val tabIcons = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif)
+            val tabLabels = listOf("Resize", "To GIF", "To Video", "Settings")
+            val tabIcons = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif, EcoIcons.Settings)
             CompositionLocalProvider(LocalContentColor provides colors.content) {
                 LiquidBottomTabs(
                     selectedTabIndex = { tab },
                     onTabSelected = { tab = it },
                     backdrop = wallBackdrop,
-                    tabsCount = 3,
+                    tabsCount = 4,
                     darkTheme = dark,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -370,7 +346,7 @@ fun EcoGifApp() {
                         .navigationBarsPadding()
                         .padding(horizontal = 28.dp, vertical = 14.dp)
                 ) {
-                    repeat(3) { i ->
+                    repeat(4) { i ->
                         LiquidBottomTab(onClick = { tab = i }) {
                             Icon(tabIcons[i], contentDescription = null, modifier = Modifier.size(24.dp))
                             Text(tabLabels[i], fontSize = 11.sp, fontWeight = FontWeight.Medium)
@@ -400,18 +376,19 @@ fun EcoGifApp() {
     }
 }
 
-private val tabTitles = listOf("Resize & Crop", "Video → GIF", "GIF → Video")
+private val tabTitles = listOf("Resize & Crop", "Video → GIF", "GIF → Video", "Settings")
 private val tabSubtitles = listOf(
     "Change a GIF's size or cut it with the crop box",
     "Turn a clip of a video into a GIF",
-    "Save a GIF as an MP4 video"
+    "Save a GIF as an MP4 video",
+    "Page colours and liquid glass"
 )
 
 @Composable
 private fun Header(tab: Int, palette: Palette, colors: EcoColors) {
-    val icons: List<ImageVector> = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif)
+    val icons: List<ImageVector> = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif, EcoIcons.Settings)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -422,31 +399,56 @@ private fun Header(tab: Int, palette: Palette, colors: EcoColors) {
                 .background(Brush.linearGradient(listOf(palette.accent, palette.accent2))),
             contentAlignment = Alignment.Center
         ) {
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    (scaleIn(spring(0.6f, 300f), initialScale = 0.3f) + fadeIn(tween(200)))
-                        .togetherWith(scaleOut(tween(150), targetScale = 0.3f) + fadeOut(tween(150)))
-                },
-                label = "headerIcon"
-            ) { t ->
-                Icon(icons[t], contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
-            }
+            Icon(icons[tab], contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
         }
         Column {
             Text("EcoGif", color = palette.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    (slideInVertically(tween(320)) { it / 2 } + fadeIn(tween(320)))
-                        .togetherWith(slideOutVertically(tween(220)) { -it / 2 } + fadeOut(tween(160)))
-                },
-                label = "headerTitle"
-            ) { t ->
-                Column {
-                    Text(tabTitles[t], color = colors.content, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                    Text(tabSubtitles[t], color = colors.secondary, fontSize = 13.sp)
-                }
+            Text(tabTitles[tab], color = colors.content, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(tabSubtitles[tab], color = colors.secondary, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun ProgressCard(
+    task: TaskState,
+    backdrop: com.kyant.backdrop.Backdrop,
+    colors: EcoColors,
+    palette: Palette,
+    dark: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier) {
+        GlassCard(backdrop, colors) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(task.label, color = colors.content, fontWeight = FontWeight.SemiBold)
+                Text("${(task.progress * 100).roundToInt()}%", color = colors.secondary)
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(CircleShape)
+                    .background(colors.field)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(task.progress.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(palette.accent)
+                )
+            }
+            LiquidButton(
+                onClick = { task.job?.cancel() },
+                backdrop = backdrop,
+                modifier = Modifier.fillMaxWidth(),
+                surfaceColor = if (dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+            ) {
+                Text("Cancel", color = colors.content, fontWeight = FontWeight.Medium)
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.kyant.backdrop.catalog.components
 
+import com.kyant.backdrop.catalog.utils.LocalGlassLevels
+import com.kyant.backdrop.catalog.utils.scaleAlpha
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +44,7 @@ fun LiquidButton(
     surfaceColor: Color = Color.Unspecified,
     content: @Composable RowScope.() -> Unit
 ) {
+    val glass = LocalGlassLevels.current
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight = remember(animationScope) {
         InteractiveHighlight(
@@ -56,8 +59,8 @@ fun LiquidButton(
                 shape = { Capsule() },
                 effects = {
                     vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(12f.dp.toPx(), 24f.dp.toPx())
+                    blur((2f.dp.toPx()) * glass.blurK)
+                    lens((12f.dp.toPx()) * glass.lensK, (24f.dp.toPx()) * glass.lensK)
                 },
                 layerBlock = if (isInteractive) {
                     {
@@ -90,10 +93,10 @@ fun LiquidButton(
                 onDrawSurface = {
                     if (tint.isSpecified) {
                         drawRect(tint, blendMode = BlendMode.Hue)
-                        drawRect(tint.copy(alpha = 0.75f))
+                        drawRect(tint.copy(alpha = 0.75f).scaleAlpha(glass.opacityK))
                     }
                     if (surfaceColor.isSpecified) {
-                        drawRect(surfaceColor)
+                        drawRect(surfaceColor.scaleAlpha(glass.opacityK))
                     }
                 }
             )
