@@ -44,6 +44,11 @@ object VideoToGif {
     fun heightFor(info: VideoInfo, width: Int): Int =
         maxOf(1, Math.round(width.toFloat() * info.height / info.width))
 
+    /** GIF timing is in 1/100 s and players treat delays under 2/100 s as slow, so ~50 fps is the real ceiling. */
+    const val MAX_REAL_FPS = 50
+
+    fun effectiveFps(fps: Int): Int = fps.coerceIn(1, MAX_REAL_FPS)
+
     suspend fun convert(
         context: Context,
         uri: Uri,
@@ -57,8 +62,9 @@ object VideoToGif {
         onProgress: (Float) -> Unit,
     ) {
         val targetH = heightFor(info, targetW)
-        val frameCount = maxOf(1, (lengthMs * fps / 1000L).toInt())
-        val stepMs = 1000f / fps
+        val realFps = effectiveFps(fps)
+        val frameCount = maxOf(1, (lengthMs * realFps / 1000L).toInt())
+        val stepMs = 1000f / realFps
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, uri)
@@ -66,7 +72,7 @@ object VideoToGif {
             encoder.start()
 
             val canScaleInDecoder = info.rotation == 0 || info.rotation == 180
-            var timeAccum = 0f
+            var csAccum = 0f
             for (i in 0 until frameCount) {
                 coroutineContext.ensureActive()
                 val timeMs = (startMs + (i * stepMs)).toLong().coerceAtMost(info.durationMs - 1)
@@ -92,11 +98,11 @@ object VideoToGif {
                 bmp.recycle()
                 bmp = null
 
-                // keep the total duration exact even when 1000/fps is not an integer
-                timeAccum += stepMs
-                val delay = timeAccum.toInt()
-                timeAccum -= delay
-                encoder.addFrame(pixels, delay, dither)
+                // GIF delays are whole 1/100 s: spread the rounding so the total duration stays exact
+                csAccum += 100f / realFps
+                val cs = csAccum.toInt()
+                csAccum -= cs
+                encoder.addFrame(pixels, cs * 10, dither)
                 onProgress((i + 1f) / frameCount)
             }
             encoder.finish()

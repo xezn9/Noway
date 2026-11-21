@@ -4,6 +4,8 @@ Android app (Jetpack Compose) with Liquid Glass UI built on `io.github.kyant0:ba
 
 Features
 - Resize GIF (width/height, scale %, keep aspect ratio, Eco mode = half the frames)
+  - live preview: every size/scale change is applied to the preview GIF immediately
+  - crop box: drag any side / corner (or the inside) to cut the GIF, then resize the cropped area
 - Video -> GIF (start, length, fps, width)
 - GIF -> Video (MP4 / H.264, scale, repeat count)
 

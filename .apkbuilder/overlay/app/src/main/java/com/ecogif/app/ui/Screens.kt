@@ -2,6 +2,7 @@ package com.ecogif.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ecogif.app.engine.GifToVideo
 import com.ecogif.app.engine.MediaSaver
+import com.ecogif.app.engine.VideoToGif
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.catalog.components.LiquidButton
 import kotlin.math.roundToInt
@@ -57,12 +59,14 @@ private fun PickCard(
     colors: EcoColors,
     preview: @Composable () -> Unit,
     details: String,
+    extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     GlassCard(backdrop, colors) {
         CardTitle(title, colors)
         if (hasFile) {
             preview()
             Text(details, color = colors.secondary, fontSize = 13.sp)
+            extra()
         } else {
             Text(hint, color = colors.secondary, fontSize = 14.sp)
         }
@@ -87,10 +91,42 @@ private fun RunButton(
     LiquidButton(
         onClick = { if (enabled) onClick() },
         backdrop = backdrop,
-        tint = EcoGreen,
+        tint = LocalAccent.current,
         modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f)
     ) {
         Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+    }
+}
+
+/** A row of preset buttons; the selected one is tinted with the accent colour. */
+@Composable
+private fun PresetRow(
+    values: List<Float>,
+    selected: Float,
+    onSelect: (Float) -> Unit,
+    backdrop: Backdrop,
+    colors: EcoColors,
+) {
+    val accent = LocalAccent.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        values.forEach { p ->
+            val on = p.roundToInt() == selected.roundToInt()
+            LiquidButton(
+                onClick = { onSelect(p) },
+                backdrop = backdrop,
+                modifier = Modifier.weight(1f),
+                tint = if (on) accent else Color.Unspecified,
+                surfaceColor = if (on) Color.Unspecified
+                else if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+            ) {
+                Text(
+                    "${p.roundToInt()}%",
+                    color = if (on) Color.White else colors.content,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 
@@ -107,85 +143,137 @@ fun ResizeScreen(
 ) {
     ScreenColumn {
         val info = state.info
-        PickCard(
-            title = "GIF",
-            hint = "Pick a GIF to change its dimensions.",
-            pickText = "Choose GIF",
-            changeText = "Choose another GIF",
-            hasFile = state.uri != null && info != null,
-            onPick = onPick,
-            backdrop = backdrop,
-            colors = colors,
-            preview = { state.uri?.let { GifPreview(it) } },
-            details = if (info == null) "" else
-                "${info.width} × ${info.height} px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
-        )
-
-        if (info != null) {
-            GlassCard(backdrop, colors) {
-                CardTitle("New size", colors)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(25f, 50f, 75f, 100f).forEach { p ->
+        Staggered(0) {
+            PickCard(
+                title = "GIF",
+                hint = "Pick a GIF to change its dimensions.",
+                pickText = "Choose GIF",
+                changeText = "Choose another GIF",
+                hasFile = state.uri != null && info != null,
+                onPick = onPick,
+                backdrop = backdrop,
+                colors = colors,
+                preview = { state.uri?.let { ResizePreview(state, it) } },
+                details = if (info == null) "" else buildString {
+                    append("${info.width} × ${info.height}")
+                    if (state.isCropped) append("  →  crop ${state.cropW} × ${state.cropH}")
+                    val ow = state.outW
+                    val oh = state.outH
+                    if (ow != null && oh != null && (ow != info.width || oh != info.height)) append("  →  $ow × $oh")
+                    append(" px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}")
+                },
+                extra = {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         LiquidButton(
-                            onClick = { state.applyScale(p) },
+                            onClick = { state.cropping = !state.cropping },
                             backdrop = backdrop,
                             modifier = Modifier.weight(1f),
-                            surfaceColor = if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+                            tint = if (state.cropping) LocalAccent.current else Color.Unspecified,
+                            surfaceColor = if (state.cropping) Color.Unspecified
+                            else if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
                         ) {
-                            Text("${p.roundToInt()}%", color = colors.content, fontWeight = FontWeight.Medium)
+                            Text(
+                                if (state.cropping) "Done" else "Crop box",
+                                color = if (state.cropping) Color.White else colors.content,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (state.isCropped) {
+                            LiquidButton(
+                                onClick = { state.resetCrop() },
+                                backdrop = backdrop,
+                                modifier = Modifier.weight(1f),
+                                surfaceColor = if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+                            ) {
+                                Text("Reset crop", color = colors.content, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
+                    if (state.cropping) {
+                        Text(
+                            "Drag any side or corner of the box to cut the GIF. Drag inside the box to move it.",
+                            color = colors.secondary,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
-                SliderRow(
-                    title = "Scale",
-                    valueText = "${state.scale.roundToInt()}%",
-                    value = state.scale,
-                    onValueChange = { state.applyScale(it.roundToInt().toFloat()) },
-                    range = 5f..200f,
-                    backdrop = backdrop,
-                    colors = colors
-                )
+            )
+        }
+
+        if (info != null) {
+            // quick numbers
+            Staggered(1) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    NumberField("Width (px)", state.widthText, state::setWidth, colors, Modifier.weight(1f))
-                    NumberField("Height (px)", state.heightText, state::setHeight, colors, Modifier.weight(1f))
+                    StatTile(
+                        "${state.outW ?: "–"} × ${state.outH ?: "–"}", "output px",
+                        backdrop, colors, Modifier.weight(1.5f)
+                    )
+                    StatTile(
+                        "${if (state.eco) (info.frameCount + 1) / 2 else info.frameCount}", "frames",
+                        backdrop, colors, Modifier.weight(1f)
+                    )
                 }
-                ToggleRow(
-                    title = "Keep aspect ratio",
-                    subtitle = "Changing one side updates the other",
-                    checked = state.keepRatio,
-                    onChange = { state.keepRatio = it },
-                    backdrop = backdrop,
-                    colors = colors
-                )
             }
 
-            GlassCard(backdrop, colors) {
-                CardTitle("Options", colors)
-                ToggleRow(
-                    title = "Eco mode",
-                    subtitle = "Drops every 2nd frame for a much smaller file",
-                    checked = state.eco,
-                    onChange = { state.eco = it },
-                    backdrop = backdrop,
-                    colors = colors
-                )
-                ToggleRow(
-                    title = "Dithering",
-                    subtitle = "Smoother gradients, bigger file",
-                    checked = state.dither,
-                    onChange = { state.dither = it },
-                    backdrop = backdrop,
-                    colors = colors
-                )
+            Staggered(2) {
+                GlassCard(backdrop, colors) {
+                    CardTitle("New size", colors)
+                    PresetRow(listOf(25f, 50f, 75f, 100f), state.scale, { state.applyScale(it) }, backdrop, colors)
+                    SliderRow(
+                        title = "Scale",
+                        valueText = "${state.scale.roundToInt()}%",
+                        value = state.scale,
+                        onValueChange = { state.applyScale(it.roundToInt().toFloat()) },
+                        range = 5f..200f,
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        NumberField("Width (px)", state.widthText, state::setWidth, colors, Modifier.weight(1f))
+                        NumberField("Height (px)", state.heightText, state::setHeight, colors, Modifier.weight(1f))
+                    }
+                    ToggleRow(
+                        title = "Keep aspect ratio",
+                        subtitle = "Changing one side updates the other",
+                        checked = state.keepRatio,
+                        onChange = { state.keepRatio = it },
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                }
+            }
+
+            Staggered(3) {
+                GlassCard(backdrop, colors) {
+                    CardTitle("Options", colors)
+                    ToggleRow(
+                        title = "Eco mode",
+                        subtitle = "Drops every 2nd frame for a much smaller file",
+                        checked = state.eco,
+                        onChange = { state.eco = it },
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                    ToggleRow(
+                        title = "Dithering",
+                        subtitle = "Smoother gradients, bigger file",
+                        checked = state.dither,
+                        onChange = { state.dither = it },
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                }
             }
 
             val valid = state.outW != null && state.outH != null
-            RunButton(
-                text = if (valid) "Resize & Save  (${state.outW} × ${state.outH})" else "Enter a valid size",
-                enabled = valid && !task.busy,
-                onClick = onRun,
-                backdrop = backdrop
-            )
+            Staggered(4) {
+                RunButton(
+                    text = if (valid) "Resize & Save  (${state.outW} × ${state.outH})" else "Enter a valid size",
+                    enabled = valid && !task.busy,
+                    onClick = onRun,
+                    backdrop = backdrop
+                )
+            }
         }
     }
 }
@@ -203,90 +291,111 @@ fun VideoToGifScreen(
 ) {
     ScreenColumn {
         val info = state.info
-        PickCard(
-            title = "Video",
-            hint = "Pick a video and turn a clip of it into a GIF.",
-            pickText = "Choose video",
-            changeText = "Choose another video",
-            hasFile = state.uri != null && info != null,
-            onPick = onPick,
-            backdrop = backdrop,
-            colors = colors,
-            preview = { state.thumb?.let { BitmapPreview(it) } },
-            details = if (info == null) "" else
-                "${info.width} × ${info.height} px  ·  ${formatTime(info.durationMs / 1000f)}  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
-        )
+        Staggered(0) {
+            PickCard(
+                title = "Video",
+                hint = "Pick a video and turn a clip of it into a GIF.",
+                pickText = "Choose video",
+                changeText = "Choose another video",
+                hasFile = state.uri != null && info != null,
+                onPick = onPick,
+                backdrop = backdrop,
+                colors = colors,
+                preview = { state.thumb?.let { BitmapPreview(it) } },
+                details = if (info == null) "" else
+                    "${info.width} × ${info.height} px  ·  ${formatTime(info.durationMs / 1000f)}  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
+            )
+        }
 
         if (info != null) {
             // the slider ranges depend on the video, so rebuild the sliders for every new video
             key(state.uri) {
-                GlassCard(backdrop, colors) {
-                    CardTitle("Clip", colors)
-                    SliderRow(
-                        title = "Start",
-                        valueText = "${"%.1f".format(state.startSec)} s",
-                        value = state.startSec,
-                        onValueChange = { state.startSec = (it * 10).roundToInt() / 10f },
-                        range = 0f..maxOf(0.5f, state.durationSec - 0.5f),
-                        backdrop = backdrop,
-                        colors = colors
-                    )
-                    SliderRow(
-                        title = "Length",
-                        valueText = "${"%.1f".format(state.effectiveLengthSec)} s",
-                        value = state.lengthSec,
-                        onValueChange = { state.lengthSec = (it * 10).roundToInt() / 10f },
-                        range = 0.5f..15f,
-                        backdrop = backdrop,
-                        colors = colors
-                    )
+                val w = state.width.roundToInt()
+                val h = VideoToGif.heightFor(info, w)
+                val realFps = VideoToGif.effectiveFps(state.fps.roundToInt())
+
+                Staggered(1) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatTile("${state.frameCount}", "frames", backdrop, colors, Modifier.weight(1f))
+                        StatTile("$realFps", "fps", backdrop, colors, Modifier.weight(1f))
+                        StatTile("$w×$h", "px", backdrop, colors, Modifier.weight(1.3f))
+                    }
                 }
 
-                GlassCard(backdrop, colors) {
-                    CardTitle("Quality", colors)
-                    SliderRow(
-                        title = "Frames per second",
-                        valueText = "${state.fps.roundToInt()} fps",
-                        value = state.fps,
-                        onValueChange = { state.fps = it.roundToInt().toFloat() },
-                        range = 5f..24f,
-                        backdrop = backdrop,
-                        colors = colors
-                    )
-                    val lo = minOf(120, state.maxWidth - 1).toFloat()
-                    SliderRow(
-                        title = "Width",
-                        valueText = "${state.width.roundToInt()} px",
-                        value = state.width,
-                        onValueChange = { state.width = it.roundToInt().toFloat() },
-                        range = lo..state.maxWidth.toFloat(),
-                        backdrop = backdrop,
-                        colors = colors
-                    )
-                    ToggleRow(
-                        title = "Dithering",
-                        subtitle = "Smoother gradients, bigger file",
-                        checked = state.dither,
-                        onChange = { state.dither = it },
-                        backdrop = backdrop,
-                        colors = colors
-                    )
-                    val w = state.width.roundToInt()
-                    val h = com.ecogif.app.engine.VideoToGif.heightFor(info, w)
-                    Text(
-                        "≈ ${state.frameCount} frames  ·  $w × $h px",
-                        color = colors.secondary,
-                        fontSize = 13.sp
-                    )
+                Staggered(2) {
+                    GlassCard(backdrop, colors) {
+                        CardTitle("Clip", colors)
+                        TimelineBar(state.startSec, state.effectiveLengthSec, state.durationSec, colors)
+                        SliderRow(
+                            title = "Start",
+                            valueText = "${"%.1f".format(state.startSec)} s",
+                            value = state.startSec,
+                            onValueChange = { state.startSec = (it * 10).roundToInt() / 10f },
+                            range = 0f..maxOf(0.5f, state.durationSec - 0.5f),
+                            backdrop = backdrop,
+                            colors = colors
+                        )
+                        SliderRow(
+                            title = "Length",
+                            valueText = "${"%.1f".format(state.effectiveLengthSec)} s",
+                            value = state.lengthSec,
+                            onValueChange = { state.lengthSec = (it * 10).roundToInt() / 10f },
+                            range = 0.5f..15f,
+                            backdrop = backdrop,
+                            colors = colors
+                        )
+                    }
+                }
+
+                Staggered(3) {
+                    GlassCard(backdrop, colors) {
+                        CardTitle("Quality", colors)
+                        SliderRow(
+                            title = "Frames per second",
+                            valueText = "${state.fps.roundToInt()} fps",
+                            value = state.fps,
+                            onValueChange = { state.fps = it.roundToInt().toFloat() },
+                            range = 5f..60f,
+                            backdrop = backdrop,
+                            colors = colors
+                        )
+                        if (state.fps.roundToInt() > VideoToGif.MAX_REAL_FPS) {
+                            Text(
+                                "GIF plays at ${VideoToGif.MAX_REAL_FPS} fps at most",
+                                color = colors.secondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                        val lo = minOf(120, state.maxWidth - 1).toFloat()
+                        SliderRow(
+                            title = "Width",
+                            valueText = "${state.width.roundToInt()} px",
+                            value = state.width,
+                            onValueChange = { state.width = it.roundToInt().toFloat() },
+                            range = lo..state.maxWidth.toFloat(),
+                            backdrop = backdrop,
+                            colors = colors
+                        )
+                        ToggleRow(
+                            title = "Dithering",
+                            subtitle = "Smoother gradients, bigger file",
+                            checked = state.dither,
+                            onChange = { state.dither = it },
+                            backdrop = backdrop,
+                            colors = colors
+                        )
+                    }
                 }
             }
 
-            RunButton(
-                text = "Create GIF",
-                enabled = !task.busy,
-                onClick = onRun,
-                backdrop = backdrop
-            )
+            Staggered(4) {
+                RunButton(
+                    text = "Create GIF",
+                    enabled = !task.busy,
+                    onClick = onRun,
+                    backdrop = backdrop
+                )
+            }
         }
     }
 }
@@ -304,57 +413,83 @@ fun GifToVideoScreen(
 ) {
     ScreenColumn {
         val info = state.info
-        PickCard(
-            title = "GIF",
-            hint = "Pick a GIF and save it as an MP4 video.",
-            pickText = "Choose GIF",
-            changeText = "Choose another GIF",
-            hasFile = state.uri != null && info != null,
-            onPick = onPick,
-            backdrop = backdrop,
-            colors = colors,
-            preview = { state.uri?.let { GifPreview(it) } },
-            details = if (info == null) "" else
-                "${info.width} × ${info.height} px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
-        )
+        Staggered(0) {
+            PickCard(
+                title = "GIF",
+                hint = "Pick a GIF and save it as an MP4 video.",
+                pickText = "Choose GIF",
+                changeText = "Choose another GIF",
+                hasFile = state.uri != null && info != null,
+                onPick = onPick,
+                backdrop = backdrop,
+                colors = colors,
+                preview = { state.uri?.let { GifPreview(it) } },
+                details = if (info == null) "" else
+                    "${info.width} × ${info.height} px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
+            )
+        }
 
         if (info != null) {
-            GlassCard(backdrop, colors) {
-                CardTitle("Video", colors)
-                SliderRow(
-                    title = "Scale",
-                    valueText = "${state.scale.roundToInt()}%",
-                    value = state.scale,
-                    onValueChange = { state.scale = it.roundToInt().toFloat() },
-                    range = 25f..100f,
-                    backdrop = backdrop,
-                    colors = colors
-                )
-                SliderRow(
-                    title = "Repeat the GIF",
-                    valueText = "${state.loops.roundToInt()}×",
-                    value = state.loops,
-                    onValueChange = { state.loops = it.roundToInt().toFloat() },
-                    range = 1f..10f,
-                    backdrop = backdrop,
-                    colors = colors
-                )
-                val percent = state.scale.roundToInt()
-                val (ow, oh) = remember(info, percent) { GifToVideo.outputSize(info.width, info.height, percent) }
-                val seconds = info.durationMs * state.loops.roundToInt() / 1000f
-                Text(
-                    "$ow × $oh px  ·  about ${formatTime(seconds)} long",
-                    color = colors.secondary,
-                    fontSize = 13.sp
-                )
+            val percent = state.scale.roundToInt()
+            val (ow, oh) = remember(info, percent) { GifToVideo.outputSize(info.width, info.height, percent) }
+            val loops = state.loops.roundToInt()
+            val seconds = info.durationMs * loops / 1000f
+
+            // big "result" panel
+            Staggered(1) {
+                GlassCard(backdrop, colors) {
+                    CardTitle("MP4 result", colors)
+                    Text(
+                        "$ow × $oh",
+                        color = LocalAccent.current,
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "about ${formatTime(seconds)} long  ·  ${loops}× repeat  ·  $percent% size",
+                        color = colors.secondary,
+                        fontSize = 14.sp
+                    )
+                }
             }
 
-            RunButton(
-                text = "Convert to MP4",
-                enabled = !task.busy,
-                onClick = onRun,
-                backdrop = backdrop
-            )
+            Staggered(2) {
+                GlassCard(backdrop, colors) {
+                    CardTitle("Size", colors)
+                    PresetRow(listOf(25f, 50f, 75f, 100f), state.scale, { state.scale = it }, backdrop, colors)
+                    SliderRow(
+                        title = "Scale",
+                        valueText = "$percent%",
+                        value = state.scale,
+                        onValueChange = { state.scale = it.roundToInt().toFloat() },
+                        range = 25f..100f,
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                }
+            }
+
+            Staggered(3) {
+                GlassCard(backdrop, colors) {
+                    CardTitle("Repeat the GIF", colors)
+                    Stepper(
+                        text = "${loops}×",
+                        onMinus = { state.loops = (loops - 1).coerceAtLeast(1).toFloat() },
+                        onPlus = { state.loops = (loops + 1).coerceAtMost(10).toFloat() },
+                        backdrop = backdrop,
+                        colors = colors
+                    )
+                }
+            }
+
+            Staggered(4) {
+                RunButton(
+                    text = "Convert to MP4",
+                    enabled = !task.busy,
+                    onClick = onRun,
+                    backdrop = backdrop
+                )
+            }
         }
     }
 }

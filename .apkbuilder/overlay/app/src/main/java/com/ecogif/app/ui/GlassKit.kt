@@ -6,6 +6,8 @@ import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.widget.ImageView
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +58,8 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.cos
+import kotlin.math.sin
 
 val EcoGreen = Color(0xFF1FA971)
 
@@ -93,36 +98,93 @@ object EcoIcons {
 
 // ----------------------------------------------------------------- wallpaper
 
-/** Static green "eco" wallpaper. The glass components refract this layer. */
+/** Colours of one tab: wallpaper gradient, four glowing blobs and the accent. */
+class Palette(
+    val accent: Color, val accent2: Color,
+    val top: Color, val mid: Color, val bot: Color,
+    val b1: Color, val b2: Color, val b3: Color, val b4: Color,
+)
+
+fun paletteFor(tab: Int, dark: Boolean): Palette = when (tab) {
+    // 1: video -> GIF  (sunset)
+    1 -> if (dark) Palette(
+        Color(0xFFFF7A2F), Color(0xFFFFC857),
+        Color(0xFF1F0A12), Color(0xFF3B1A14), Color(0xFF24100A),
+        Color(0xFFFF7A45).copy(0.55f), Color(0xFFFF4D8D).copy(0.50f),
+        Color(0xFFFFC857).copy(0.40f), Color(0xFFE8590C).copy(0.50f)
+    ) else Palette(
+        Color(0xFFF2701F), Color(0xFFFFB02E),
+        Color(0xFFFFF1E8), Color(0xFFFFE0CC), Color(0xFFFFF4D6),
+        Color(0xFFFFB38A).copy(0.75f), Color(0xFFFF9EC0).copy(0.75f),
+        Color(0xFFFFE08A).copy(0.80f), Color(0xFFFFA46B).copy(0.65f)
+    )
+    // 2: GIF -> video  (ocean / violet)
+    2 -> if (dark) Palette(
+        Color(0xFF4C7DFF), Color(0xFF9B6CFF),
+        Color(0xFF0A0F24), Color(0xFF14204A), Color(0xFF0A1030),
+        Color(0xFF5B8CFF).copy(0.55f), Color(0xFF9B5CFF).copy(0.50f),
+        Color(0xFF3FD0E8).copy(0.40f), Color(0xFF3A5BDB).copy(0.55f)
+    ) else Palette(
+        Color(0xFF3D6BF0), Color(0xFF8E5CF5),
+        Color(0xFFECF1FF), Color(0xFFDCE5FF), Color(0xFFEFE6FF),
+        Color(0xFF9DB8FF).copy(0.75f), Color(0xFFC6A8FF).copy(0.75f),
+        Color(0xFF9FE4F2).copy(0.80f), Color(0xFF8AA4F5).copy(0.65f)
+    )
+    // 0: resize  (eco green)
+    else -> if (dark) Palette(
+        EcoGreen, Color(0xFFB6F25C),
+        Color(0xFF031A13), Color(0xFF0A3B2B), Color(0xFF052418),
+        Color(0xFF3FD98B).copy(0.55f), Color(0xFF17B3A6).copy(0.50f),
+        Color(0xFFB6F25C).copy(0.40f), Color(0xFF1FA971).copy(0.55f)
+    ) else Palette(
+        EcoGreen, Color(0xFF8BD62F),
+        Color(0xFFEAFBF0), Color(0xFFD5F5E3), Color(0xFFF3FBD8),
+        Color(0xFF7BE3A5).copy(0.75f), Color(0xFF8EE8DA).copy(0.75f),
+        Color(0xFFD7F57F).copy(0.80f), Color(0xFF5ED79A).copy(0.65f)
+    )
+}
+
+/** Colours glide smoothly from one tab's palette to the next. */
 @Composable
-fun EcoWallpaper(dark: Boolean, modifier: Modifier = Modifier) {
+fun animatedPalette(t: Palette): Palette {
+    val spec = tween<Color>(durationMillis = 800)
+    return Palette(
+        animateColorAsState(t.accent, spec, label = "accent").value,
+        animateColorAsState(t.accent2, spec, label = "accent2").value,
+        animateColorAsState(t.top, spec, label = "top").value,
+        animateColorAsState(t.mid, spec, label = "mid").value,
+        animateColorAsState(t.bot, spec, label = "bot").value,
+        animateColorAsState(t.b1, spec, label = "b1").value,
+        animateColorAsState(t.b2, spec, label = "b2").value,
+        animateColorAsState(t.b3, spec, label = "b3").value,
+        animateColorAsState(t.b4, spec, label = "b4").value,
+    )
+}
+
+val LocalAccent = compositionLocalOf { EcoGreen }
+
+// ----------------------------------------------------------------- wallpaper
+
+/** Animated wallpaper: the glow blobs drift when [shift] (the tab position) changes. */
+@Composable
+fun EcoWallpaper(dark: Boolean, palette: Palette, shift: Float, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        drawRect(
-            Brush.verticalGradient(
-                if (dark) listOf(Color(0xFF031A13), Color(0xFF0A3B2B), Color(0xFF052418))
-                else listOf(Color(0xFFEAFBF0), Color(0xFFD5F5E3), Color(0xFFF3FBD8))
-            )
-        )
-        fun blob(cx: Float, cy: Float, r: Float, c: Color) {
+        drawRect(Brush.verticalGradient(listOf(palette.top, palette.mid, palette.bot)))
+        fun blob(i: Int, cx: Float, cy: Float, r: Float, c: Color) {
+            val x = cx + w * 0.16f * sin(shift * 1.9f + i * 1.3f)
+            val y = cy + h * 0.06f * cos(shift * 1.4f + i * 0.9f)
             drawCircle(
-                brush = Brush.radialGradient(listOf(c, Color.Transparent), center = Offset(cx, cy), radius = r),
+                brush = Brush.radialGradient(listOf(c, Color.Transparent), center = Offset(x, y), radius = r),
                 radius = r,
-                center = Offset(cx, cy)
+                center = Offset(x, y)
             )
         }
-        if (dark) {
-            blob(w * 0.15f, h * 0.10f, w * 0.75f, Color(0xFF3FD98B).copy(0.55f))
-            blob(w * 0.95f, h * 0.35f, w * 0.70f, Color(0xFF17B3A6).copy(0.50f))
-            blob(w * 0.10f, h * 0.62f, w * 0.65f, Color(0xFFB6F25C).copy(0.40f))
-            blob(w * 0.85f, h * 0.90f, w * 0.80f, Color(0xFF1FA971).copy(0.55f))
-        } else {
-            blob(w * 0.15f, h * 0.10f, w * 0.75f, Color(0xFF7BE3A5).copy(0.75f))
-            blob(w * 0.95f, h * 0.35f, w * 0.70f, Color(0xFF8EE8DA).copy(0.75f))
-            blob(w * 0.10f, h * 0.62f, w * 0.65f, Color(0xFFD7F57F).copy(0.80f))
-            blob(w * 0.85f, h * 0.90f, w * 0.80f, Color(0xFF5ED79A).copy(0.65f))
-        }
+        blob(0, w * 0.15f, h * 0.10f, w * 0.75f, palette.b1)
+        blob(1, w * 0.95f, h * 0.35f, w * 0.70f, palette.b2)
+        blob(2, w * 0.10f, h * 0.62f, w * 0.65f, palette.b3)
+        blob(3, w * 0.85f, h * 0.90f, w * 0.80f, palette.b4)
         // a few soft stripes so the lens refraction is clearly visible
         val stripe = if (dark) Color.White.copy(0.05f) else Color.White.copy(0.35f)
         for (i in 0..5) {
@@ -233,7 +295,7 @@ fun NumberField(
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             textStyle = TextStyle(color = colors.content, fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
-            cursorBrush = SolidColor(EcoGreen),
+            cursorBrush = SolidColor(LocalAccent.current),
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))

@@ -4,6 +4,19 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -35,7 +48,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,6 +101,9 @@ fun EcoGifApp() {
     val screenBackdrop = rememberLayerBackdrop()
 
     var tab by remember { mutableIntStateOf(0) }
+    val palette = animatedPalette(paletteFor(tab, dark))
+    val shift by animateFloatAsState(tab.toFloat(), spring(stiffness = 35f), label = "wallpaperShift")
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
     val toGif = remember { VideoToGifState() }
@@ -180,7 +201,7 @@ fun EcoGifApp() {
                     }
                 }
                 showDialog(
-                    DialogData("Done!", message, "Share", "Close", EcoGreen) {
+                    DialogData("Done!", message, "Share", "Close", palette.accent) {
                         share(context, done.uri, kind.mime)
                     }
                 )
@@ -207,9 +228,13 @@ fun EcoGifApp() {
         val h = resize.outH ?: return
         val eco = resize.eco
         val dither = resize.dither
+        val cx = resize.cropX
+        val cy = resize.cropY
+        val cw = resize.cropW
+        val ch = resize.cropH
         perform(MediaSaver.Kind.GIF, "Resizing GIF…", bytes.size.toLong()) { pending, report ->
             openOut(pending).buffered().use { out ->
-                GifResizer.resize(bytes, out, w, h, eco, dither, report)
+                GifResizer.resize(bytes, out, w, h, eco, dither, report, cx, cy, cw, ch)
             }
         }
     }
@@ -243,40 +268,47 @@ fun EcoGifApp() {
 
     // ------------------------------------------------------------ UI
 
+    CompositionLocalProvider(LocalAccent provides palette.accent) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(screenBackdrop)) {
-            EcoWallpaper(dark, Modifier.fillMaxSize().layerBackdrop(wallBackdrop))
+            EcoWallpaper(dark, palette, shift, Modifier.fillMaxSize().layerBackdrop(wallBackdrop))
 
             Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 14.dp)) {
-                    Text("EcoGif", color = colors.content, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        when (tab) {
-                            0 -> "Resize a GIF"
-                            1 -> "Turn a video into a GIF"
-                            else -> "Turn a GIF into a video"
-                        },
-                        color = colors.secondary,
-                        fontSize = 14.sp
-                    )
-                }
+                Header(tab, palette, colors)
                 Box(Modifier.weight(1f)) {
-                    when (tab) {
-                        0 -> ResizeScreen(
-                            resize, task, wallBackdrop, colors,
-                            onPick = { pickGifForResize.launch(gifRequest) },
-                            onRun = ::runResize
-                        )
-                        1 -> VideoToGifScreen(
-                            toGif, task, wallBackdrop, colors,
-                            onPick = { pickVideo.launch(videoRequest) },
-                            onRun = ::runVideoToGif
-                        )
-                        else -> GifToVideoScreen(
-                            toVideo, task, wallBackdrop, colors,
-                            onPick = { pickGifForVideo.launch(gifRequest) },
-                            onRun = ::runGifToVideo
-                        )
+                    AnimatedContent(
+                        targetState = tab,
+                        transitionSpec = {
+                            // slide the way the tab bar moves (mirrored in right-to-left layouts)
+                            val dir = (if (targetState > initialState) 1 else -1) * (if (rtl) -1 else 1)
+                            (slideInHorizontally(spring(0.85f, 320f)) { full -> full * dir / 3 } +
+                                fadeIn(tween(380, 90)) +
+                                scaleIn(tween(420), initialScale = 0.9f))
+                                .togetherWith(
+                                    slideOutHorizontally(tween(320)) { full -> -full * dir / 4 } +
+                                        fadeOut(tween(220)) +
+                                        scaleOut(tween(320), targetScale = 0.94f)
+                                )
+                        },
+                        label = "tabs"
+                    ) { t ->
+                        when (t) {
+                            0 -> ResizeScreen(
+                                resize, task, wallBackdrop, colors,
+                                onPick = { pickGifForResize.launch(gifRequest) },
+                                onRun = ::runResize
+                            )
+                            1 -> VideoToGifScreen(
+                                toGif, task, wallBackdrop, colors,
+                                onPick = { pickVideo.launch(videoRequest) },
+                                onRun = ::runVideoToGif
+                            )
+                            else -> GifToVideoScreen(
+                                toVideo, task, wallBackdrop, colors,
+                                onPick = { pickGifForVideo.launch(gifRequest) },
+                                onRun = ::runGifToVideo
+                            )
+                        }
                     }
                 }
             }
@@ -308,7 +340,7 @@ fun EcoGifApp() {
                                 Modifier
                                     .fillMaxWidth(task.progress.coerceIn(0f, 1f))
                                     .fillMaxHeight()
-                                    .background(EcoGreen)
+                                    .background(palette.accent)
                             )
                         }
                         LiquidButton(
@@ -364,5 +396,58 @@ fun EcoGifApp() {
                 dialog.onConfirm?.invoke()
             }
         )
+    }
+    }
+}
+
+private val tabTitles = listOf("Resize & Crop", "Video → GIF", "GIF → Video")
+private val tabSubtitles = listOf(
+    "Change a GIF's size or cut it with the crop box",
+    "Turn a clip of a video into a GIF",
+    "Save a GIF as an MP4 video"
+)
+
+@Composable
+private fun Header(tab: Int, palette: Palette, colors: EcoColors) {
+    val icons: List<ImageVector> = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            Modifier
+                .size(54.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.linearGradient(listOf(palette.accent, palette.accent2))),
+            contentAlignment = Alignment.Center
+        ) {
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    (scaleIn(spring(0.6f, 300f), initialScale = 0.3f) + fadeIn(tween(200)))
+                        .togetherWith(scaleOut(tween(150), targetScale = 0.3f) + fadeOut(tween(150)))
+                },
+                label = "headerIcon"
+            ) { t ->
+                Icon(icons[t], contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
+        Column {
+            Text("EcoGif", color = palette.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    (slideInVertically(tween(320)) { it / 2 } + fadeIn(tween(320)))
+                        .togetherWith(slideOutVertically(tween(220)) { -it / 2 } + fadeOut(tween(160)))
+                },
+                label = "headerTitle"
+            ) { t ->
+                Column {
+                    Text(tabTitles[t], color = colors.content, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text(tabSubtitles[t], color = colors.secondary, fontSize = 13.sp)
+                }
+            }
+        }
     }
 }

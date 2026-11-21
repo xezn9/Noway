@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.ecogif.app.engine.GifInfo
 import com.ecogif.app.engine.VideoInfo
+import com.ecogif.app.engine.VideoToGif
 import kotlinx.coroutines.Job
 import kotlin.math.roundToInt
 
@@ -49,6 +50,23 @@ class ResizeState {
     var eco by mutableStateOf(false)
     var dither by mutableStateOf(false)
 
+    // crop box, as fractions (0..1) of the original GIF
+    var cropL by mutableFloatStateOf(0f)
+    var cropT by mutableFloatStateOf(0f)
+    var cropR by mutableFloatStateOf(1f)
+    var cropB by mutableFloatStateOf(1f)
+    var cropping by mutableStateOf(false)
+
+    private val srcW: Int get() = info?.width ?: 1
+    private val srcH: Int get() = info?.height ?: 1
+
+    /** The crop rectangle in real GIF pixels. */
+    val cropX: Int get() = (cropL * srcW).roundToInt().coerceIn(0, srcW - 1)
+    val cropY: Int get() = (cropT * srcH).roundToInt().coerceIn(0, srcH - 1)
+    val cropW: Int get() = ((cropR * srcW).roundToInt() - cropX).coerceIn(1, srcW - cropX)
+    val cropH: Int get() = ((cropB * srcH).roundToInt() - cropY).coerceIn(1, srcH - cropY)
+    val isCropped: Boolean get() = info != null && (cropW != srcW || cropH != srcH)
+
     val outW: Int? get() = widthText.toIntOrNull()?.takeIf { it in 1..4096 }
     val outH: Int? get() = heightText.toIntOrNull()?.takeIf { it in 1..4096 }
 
@@ -58,33 +76,51 @@ class ResizeState {
         this.info = info
         this.name = name
         this.sizeBytes = bytes.size.toLong()
+        cropL = 0f; cropT = 0f; cropR = 1f; cropB = 1f
+        cropping = false
         applyScale(100f)
     }
 
+    /** The percentage is relative to the cropped area. */
     fun applyScale(percent: Float) {
-        val i = info ?: return
+        if (info == null) return
         scale = percent
-        widthText = (i.width * percent / 100f).roundToInt().coerceAtLeast(1).toString()
-        heightText = (i.height * percent / 100f).roundToInt().coerceAtLeast(1).toString()
+        widthText = (cropW * percent / 100f).roundToInt().coerceAtLeast(1).toString()
+        heightText = (cropH * percent / 100f).roundToInt().coerceAtLeast(1).toString()
     }
+
+    /** Moves the crop box and updates the output size right away. */
+    fun setCrop(l: Float, t: Float, r: Float, b: Float) {
+        val oldW = cropW
+        val oldH = cropH
+        cropL = l; cropT = t; cropR = r; cropB = b
+        if (keepRatio) {
+            applyScale(scale)
+        } else {
+            outW?.let { widthText = (it * cropW / oldW.toFloat()).roundToInt().coerceIn(1, 4096).toString() }
+            outH?.let { heightText = (it * cropH / oldH.toFloat()).roundToInt().coerceIn(1, 4096).toString() }
+        }
+    }
+
+    fun resetCrop() = setCrop(0f, 0f, 1f, 1f)
 
     fun setWidth(text: String) {
         widthText = text.filter { it.isDigit() }.take(4)
-        val i = info ?: return
+        if (info == null) return
         val w = widthText.toIntOrNull() ?: return
         if (keepRatio && w > 0) {
-            heightText = (w * i.height / i.width.toFloat()).roundToInt().coerceAtLeast(1).toString()
-            scale = (w * 100f / i.width).coerceIn(5f, 200f)
+            heightText = (w * cropH / cropW.toFloat()).roundToInt().coerceAtLeast(1).toString()
+            scale = (w * 100f / cropW).coerceIn(5f, 200f)
         }
     }
 
     fun setHeight(text: String) {
         heightText = text.filter { it.isDigit() }.take(4)
-        val i = info ?: return
+        if (info == null) return
         val h = heightText.toIntOrNull() ?: return
         if (keepRatio && h > 0) {
-            widthText = (h * i.width / i.height.toFloat()).roundToInt().coerceAtLeast(1).toString()
-            scale = (h * 100f / i.height).coerceIn(5f, 200f)
+            widthText = (h * cropW / cropH.toFloat()).roundToInt().coerceAtLeast(1).toString()
+            scale = (h * 100f / cropH).coerceIn(5f, 200f)
         }
     }
 }
@@ -112,7 +148,7 @@ class VideoToGifState {
     val effectiveLengthSec: Float
         get() = lengthSec.coerceAtMost((durationSec - startSec).coerceAtLeast(0.2f))
 
-    val frameCount: Int get() = maxOf(1, (effectiveLengthSec * fps.roundToInt()).toInt())
+    val frameCount: Int get() = maxOf(1, (effectiveLengthSec * VideoToGif.effectiveFps(fps.roundToInt())).toInt())
 
     fun load(uri: Uri, info: VideoInfo, thumb: android.graphics.Bitmap?, name: String, size: Long) {
         this.uri = uri

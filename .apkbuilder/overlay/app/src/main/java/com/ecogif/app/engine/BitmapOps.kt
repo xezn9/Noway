@@ -30,6 +30,20 @@ object BitmapOps {
         return out
     }
 
+    /** Cuts the rectangle (x, y, w, h) out of an ARGB pixel array. */
+    fun cropPixels(pixels: IntArray, srcW: Int, srcH: Int, x: Int, y: Int, w: Int, h: Int): IntArray {
+        if (x == 0 && y == 0 && w == srcW && h == srcH) return pixels
+        val cx = x.coerceIn(0, srcW - 1)
+        val cy = y.coerceIn(0, srcH - 1)
+        val cw = w.coerceIn(1, srcW - cx)
+        val ch = h.coerceIn(1, srcH - cy)
+        val out = IntArray(cw * ch)
+        for (row in 0 until ch) {
+            System.arraycopy(pixels, (cy + row) * srcW + cx, out, row * cw, cw)
+        }
+        return out
+    }
+
     fun toPixels(bmp: Bitmap): IntArray {
         val out = IntArray(bmp.width * bmp.height)
         bmp.getPixels(out, 0, bmp.width, 0, 0, bmp.width, bmp.height)

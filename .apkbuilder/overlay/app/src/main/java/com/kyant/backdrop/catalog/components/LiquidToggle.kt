@@ -121,6 +121,8 @@ fun LiquidToggle(
                     val startSelected = currentSelected()
                     val startFraction = fraction
                     var dragged = false
+                    var rawTotal = 0f      // signed finger travel (not clamped)
+                    var maxTravel = 0f     // furthest the finger ever went from the start
 
                     val slop = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ ->
                         change.consume()
@@ -131,6 +133,8 @@ fun LiquidToggle(
                         dragged = true
                         horizontalDrag(slop.id) { change ->
                             val delta = change.positionChange().x / dragWidth
+                            rawTotal += delta
+                            maxTravel = maxOf(maxTravel, abs(rawTotal))
                             fraction = (fraction + if (isLtr) delta else -delta)
                                 .fastCoerceIn(0f, 1f)
                             change.consume()
@@ -143,7 +147,8 @@ fun LiquidToggle(
 
                     val target = when {
                         tapped -> !startSelected
-                        dragged && abs(fraction - startFraction) < 0.15f -> !startSelected
+                        // only a tiny wiggle counts as a tap; going far and coming back keeps the final side
+                        dragged && maxTravel < 0.15f -> !startSelected
                         dragged -> fraction >= 0.5f
                         else -> startSelected
                     }
