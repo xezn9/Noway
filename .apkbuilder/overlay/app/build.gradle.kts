@@ -47,7 +47,7 @@ dependencies {
 
     // Cristal líquido de la app de ajustes (barra de pestañas, interruptor y deslizador).
     // Solo los usa SettingsActivity: los hooks del launcher y de SystemUI no los tocan.
-    implementation("io.github.kyant0:backdrop:2.0.1")
+    implementation("io.github.kyant0:backdrop:2.0.0")
     implementation("io.github.kyant0:shapes:1.2.1")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation(platform("androidx.compose:compose-bom:2025.09.00"))
