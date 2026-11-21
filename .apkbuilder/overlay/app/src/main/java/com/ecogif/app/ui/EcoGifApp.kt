@@ -131,11 +131,18 @@ fun EcoGifApp() {
     var prevTab by remember { mutableIntStateOf(-1) }
     val reveal = remember { Animatable(1f) }
     LaunchedEffect(tab) {
-        if (tab != shownTab) {
-            reveal.snapTo(0f)
-            prevTab = shownTab
-            shownTab = tab
-            reveal.animateTo(1f, tween(1000, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)))
+        val target = tab
+        if (target != shownTab) {
+            try {
+                reveal.snapTo(0f)
+                prevTab = shownTab
+                shownTab = target
+                reveal.animateTo(1f, tween(1000, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)))
+            } finally {
+                // never leave the old page behind (also when a quick tab change cancels this animation)
+                if (shownTab == target) prevTab = -1
+            }
+        } else if (prevTab >= 0) {
             prevTab = -1
         }
     }
