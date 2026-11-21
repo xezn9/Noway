@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.getValue
@@ -576,6 +578,7 @@ fun SettingsScreen(
     backdrop: Backdrop,
     colors: EcoColors,
     header: @Composable () -> Unit,
+    onLanguage: (Boolean, androidx.compose.ui.geometry.Offset) -> Unit,
 ) {
     ScreenColumn(header) {
         Staggered(0) {
@@ -584,10 +587,16 @@ fun SettingsScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(true to "العربية", false to "English").forEach { (ar, label) ->
                         val on = settings.arabic == ar
+                        val center = remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .androidx_onPositioned { center.value = it }
+                        ) {
                         LiquidButton(
-                            onClick = { settings.changeLanguage(ar) },
+                            onClick = { if (!on) onLanguage(ar, center.value) },
                             backdrop = backdrop,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             tint = if (on) LocalAccent.current else Color.Unspecified,
                             surfaceColor = if (on) Color.Unspecified
                             else if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
@@ -599,6 +608,7 @@ fun SettingsScreen(
                                 fontSize = 14.sp,
                                 maxLines = 1
                             )
+                        }
                         }
                     }
                 }
@@ -699,3 +709,12 @@ fun SettingsScreen(
         }
     }
 }
+
+/** Reports the centre of this element in window coordinates. */
+private fun Modifier.androidx_onPositioned(onCenter: (androidx.compose.ui.geometry.Offset) -> Unit): Modifier =
+    this.then(
+        androidx.compose.ui.Modifier.onGloballyPositioned { c ->
+            val p = c.positionInRoot()
+            onCenter(androidx.compose.ui.geometry.Offset(p.x + c.size.width / 2f, p.y + c.size.height / 2f))
+        }
+    )

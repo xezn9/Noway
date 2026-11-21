@@ -107,6 +107,7 @@ fun EcoGifApp() {
     val shift by animateFloatAsState(tab.toFloat(), spring(stiffness = 35f), label = "wallpaperShift")
     val rtl = true // layout is always right-to-left; only the texts change with the language
     var splashDone by remember { mutableStateOf(!settings.showSplash) }
+    val langSwitch = remember { LangSwitchState() }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
     val toGif = remember { VideoToGifState() }
@@ -319,7 +320,12 @@ fun EcoGifApp() {
                                     onPick = { pickGifForVideo.launch(gifRequest) },
                                     onRun = ::runGifToVideo
                                 )
-                                else -> SettingsScreen(settings, wallBackdrop, colors, header)
+                                else -> SettingsScreen(
+                                    settings, wallBackdrop, colors, header,
+                                    onLanguage = { ar, from ->
+                                        scope.launch { langSwitch.run(ar, from) { settings.changeLanguage(ar) } }
+                                    }
+                                )
                             }
                             if (task.busy && task.tab == t) {
                                 ProgressCard(
@@ -379,6 +385,8 @@ fun EcoGifApp() {
         )
 
         if (!splashDone) SplashScreen(onFinished = { splashDone = true })
+
+        LanguageSwitchOverlay(langSwitch, palette.accent, palette.accent2)
     }
     }
 }
