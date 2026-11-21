@@ -25,6 +25,7 @@ import com.kyant.backdrop.catalog.components.LiquidToggle
  * [setOnChange] (avisa cuando lo cambia el usuario).
  *
  * Como en [LiquidSliderView], el cristal de la bola refracta un fondo liso del color de la tarjeta.
+ * El componente es el original de Kyant0 sin cambios (LiquidToggle.kt): mismos colores, mismo gesto.
  */
 class LiquidToggleView(
     context: Context,
@@ -63,8 +64,10 @@ class LiquidToggleView(
                     onSelect = { on -> change(on, true) },
                     backdrop = backdrop,
                     modifier = Modifier.align(Alignment.Center),
-                    accent = Color(onColor),
-                    track = Color(offColor)
+                    // Colores originales de Kyant0 (verde y gris): el interruptor ya no toma el
+                    // color de la app. `onColor` y `offColor` se quedan en el constructor solo para
+                    // que SettingsActivity no cambie.
+                    dark = true
                 )
             }
           }
