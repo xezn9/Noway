@@ -1,12 +1,11 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.icehome.up"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.icehome.up"
@@ -34,12 +33,6 @@ android {
     }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
-}
-
 dependencies {
     // Las dos API de Xposed, solo para compilar: en el móvil las pone el framework.
     compileOnly("de.robv.android.xposed:api:82")          // clásica, motor LegacyEngine
@@ -47,10 +40,10 @@ dependencies {
 
     // Cristal líquido de la app de ajustes (barra de pestañas, interruptor y deslizador).
     // Solo los usa SettingsActivity: los hooks del launcher y de SystemUI no los tocan.
-    implementation("io.github.kyant0:backdrop:2.0.0")
+    implementation("io.github.kyant0:backdrop:2.0.1")
     implementation("io.github.kyant0:shapes:1.2.1")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation(platform("androidx.compose:compose-bom:2025.09.00"))
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
