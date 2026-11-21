@@ -29,6 +29,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -139,7 +141,7 @@ fun EcoGifApp() {
     }
     val uiDensity = LocalDensity.current
     // the circle is born at the centre of the tab bar (a bit above the bottom edge + navigation bar)
-    val bottomPx = androidx.compose.foundation.layout.WindowInsets.navigationBars.getBottom(uiDensity) +
+    val bottomPx = WindowInsets.navigationBars.getBottom(uiDensity) +
         with(uiDensity) { 46.dp.toPx() }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
