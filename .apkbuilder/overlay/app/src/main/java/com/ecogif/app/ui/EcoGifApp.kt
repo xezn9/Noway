@@ -7,7 +7,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -108,6 +111,16 @@ fun EcoGifApp() {
     val rtl = true // layout is always right-to-left; only the texts change with the language
     var splashDone by remember { mutableStateOf(!settings.showSplash) }
     val langSwitch = remember { LangSwitchState() }
+    val screenCfg = LocalConfiguration.current
+    /** Where tab [i] sits on screen (as a fraction), so a page can grow out of / shrink back into it. */
+    fun tabOrigin(i: Int): TransformOrigin {
+        val w = screenCfg.screenWidthDp.toFloat()
+        val h = screenCfg.screenHeightDp.toFloat()
+        val barFrac = ((w - 64f) / w).coerceIn(0.5f, 1f)
+        val u = (i + 0.5f) / 4f
+        val x = if (rtl) 0.5f + (0.5f - u) * barFrac else 0.5f + (u - 0.5f) * barFrac
+        return TransformOrigin(x, 1f - 68f / h)
+    }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
     val toGif = remember { VideoToGifState() }
@@ -288,16 +301,16 @@ fun EcoGifApp() {
                     AnimatedContent(
                         targetState = tab,
                         transitionSpec = {
-                            // slide the way the tab bar moves (mirrored in right-to-left layouts)
-                            val dir = (if (targetState > initialState) 1 else -1) * (if (rtl) -1 else 1)
-                            (slideInHorizontally(spring(0.85f, 320f)) { full -> full * dir / 3 } +
-                                fadeIn(tween(380, 90)) +
-                                scaleIn(tween(420), initialScale = 0.9f))
+                            // the new page grows out of ITS OWN tab in the bottom bar,
+                            // the old one shrinks back toward its tab
+                            (scaleIn(tween(560, easing = FastOutSlowInEasing), initialScale = 0.08f, transformOrigin = tabOrigin(targetState)) +
+                                fadeIn(tween(320)) +
+                                slideInVertically(tween(560, easing = FastOutSlowInEasing)) { it / 12 })
                                 .togetherWith(
-                                    slideOutHorizontally(tween(320)) { full -> -full * dir / 4 } +
-                                        fadeOut(tween(220)) +
-                                        scaleOut(tween(320), targetScale = 0.94f)
+                                    scaleOut(tween(300, easing = FastOutSlowInEasing), targetScale = 0.6f, transformOrigin = tabOrigin(initialState)) +
+                                        fadeOut(tween(200))
                                 )
+                                .apply { targetContentZIndex = 1f }
                         },
                         label = "tabs"
                     ) { t ->
