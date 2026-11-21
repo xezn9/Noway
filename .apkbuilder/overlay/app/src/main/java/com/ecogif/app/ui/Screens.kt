@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ecogif.app.engine.GifToVideo
@@ -46,6 +47,9 @@ private fun formatTime(sec: Float): String {
     return "%d:%02d".format(total / 60, total % 60)
 }
 
+/** Fixed signature shown at the bottom of every page. Change the text here. */
+const val SIGNATURE = "EcoGif"
+
 @Composable
 private fun ScreenColumn(header: @Composable () -> Unit, content: @Composable () -> Unit) {
     // the whole page scrolls (header included) and fills the screen edge to edge
@@ -59,6 +63,14 @@ private fun ScreenColumn(header: @Composable () -> Unit, content: @Composable ()
     ) {
         header()
         content()
+        Text(
+            SIGNATURE,
+            color = LocalAccent.current.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.navigationBarsPadding().height(130.dp))
     }
 }

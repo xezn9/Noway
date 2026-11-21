@@ -18,8 +18,23 @@ android {
         versionName = "1.0"
     }
 
+    // One fixed signing key for every build (debug AND release), so each new APK
+    // installs over the old one as an update. Keep ecogif.jks safe: never change or lose it.
+    signingConfigs {
+        create("ecogif") {
+            storeFile = file("ecogif.jks")
+            storePassword = "ecogif2026"
+            keyAlias = "ecogif"
+            keyPassword = "ecogif2026"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("ecogif")
+        }
         release {
+            signingConfig = signingConfigs.getByName("ecogif")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

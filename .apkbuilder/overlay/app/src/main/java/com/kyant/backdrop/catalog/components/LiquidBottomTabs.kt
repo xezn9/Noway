@@ -257,8 +257,8 @@ fun LiquidBottomTabs(
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         lens(
-                            (10f.dp.toPx() * progress) * glass.lensK,
-                            (14f.dp.toPx() * progress) * glass.lensK,
+                            10f.dp.toPx() * progress,
+                            14f.dp.toPx() * progress,
                             chromaticAberration = true
                         )
                     },
@@ -289,7 +289,7 @@ fun LiquidBottomTabs(
                         drawRect(
                             if (isLightTheme) Color.Black.copy(0.1f)
                             else Color.White.copy(0.1f),
-                            alpha = (1f - progress) * glass.opacityK.coerceAtMost(1f)
+                            alpha = 1f - progress
                         )
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }

@@ -66,7 +66,6 @@ fun LiquidToggle(
     modifier: Modifier = Modifier,
     dark: Boolean = isSystemInDarkTheme()
 ) {
-    val glass = LocalGlassLevels.current
     val isLightTheme = !dark
     val accentColor =
         if (isLightTheme) Color(0xFF34C759)
@@ -197,10 +196,10 @@ fun LiquidToggle(
                     shape = { Capsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
-                        blur((8f.dp.toPx() * (1f - progress)) * glass.blurK)
+                        blur(8f.dp.toPx() * (1f - progress))
                         lens(
-                            (5f.dp.toPx() * progress) * glass.lensK,
-                            (10f.dp.toPx() * progress) * glass.lensK,
+                            5f.dp.toPx() * progress,
+                            10f.dp.toPx() * progress,
                             chromaticAberration = true
                         )
                     },
@@ -234,7 +233,7 @@ fun LiquidToggle(
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
-                        drawRect(Color.White.copy(alpha = (1f - progress) * glass.opacityK.coerceAtMost(1f)))
+                        drawRect(Color.White.copy(alpha = 1f - progress))
                     }
                 )
                 .size(40f.dp, 24f.dp)

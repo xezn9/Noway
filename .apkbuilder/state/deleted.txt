@@ -127,6 +127,7 @@ app/src/main/res/drawable/ic_home.xml
 app/src/main/res/drawable/ic_image_24.xml
 app/src/main/res/drawable/ic_info_24.xml
 app/src/main/res/drawable/ic_insert_drive_file_24.xml
+app/src/main/res/drawable/ic_launcher_foreground.xml
 app/src/main/res/drawable/ic_lock.xml
 app/src/main/res/drawable/ic_lock_open.xml
 app/src/main/res/drawable/ic_mobile_phone.xml

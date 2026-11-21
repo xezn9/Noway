@@ -99,6 +99,8 @@ fun EcoGifApp() {
     // wallpaper layer (what the glass refracts) and whole-screen layer (what the dialog refracts)
     val wallBackdrop = rememberLayerBackdrop()
     val screenBackdrop = rememberLayerBackdrop()
+    // wallpaper + page content (NOT the tab bar): the bottom bar refracts this, so it copies what is behind it
+    val contentBackdrop = rememberLayerBackdrop()
 
     var tab by remember { mutableIntStateOf(0) }
     val settings = remember { AppSettings(context) }
@@ -276,6 +278,7 @@ fun EcoGifApp() {
     ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(screenBackdrop)) {
+            Box(Modifier.fillMaxSize().layerBackdrop(contentBackdrop)) {
             EcoWallpaper(dark, palette, shift, Modifier.fillMaxSize().layerBackdrop(wallBackdrop))
 
             Box(Modifier.fillMaxSize()) {
@@ -330,6 +333,7 @@ fun EcoGifApp() {
                     }
                 }
             }
+            }
 
             val tabLabels = listOf("Resize", "To GIF", "To Video", "Settings")
             val tabIcons = listOf(EcoIcons.Resize, EcoIcons.Movie, EcoIcons.Gif, EcoIcons.Settings)
@@ -337,7 +341,7 @@ fun EcoGifApp() {
                 LiquidBottomTabs(
                     selectedTabIndex = { tab },
                     onTabSelected = { tab = it },
-                    backdrop = wallBackdrop,
+                    backdrop = contentBackdrop,
                     tabsCount = 4,
                     darkTheme = dark,
                     modifier = Modifier
