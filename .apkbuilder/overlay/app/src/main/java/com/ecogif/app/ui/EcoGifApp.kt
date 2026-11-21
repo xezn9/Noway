@@ -8,7 +8,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.animation.fadeIn
@@ -41,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -121,6 +125,22 @@ fun EcoGifApp() {
         val x = if (rtl) 0.5f + (0.5f - u) * barFrac else 0.5f + (u - 0.5f) * barFrac
         return TransformOrigin(x, 1f - 68f / h)
     }
+    var shownTab by remember { mutableIntStateOf(0) }
+    var prevTab by remember { mutableIntStateOf(-1) }
+    val reveal = remember { Animatable(1f) }
+    LaunchedEffect(tab) {
+        if (tab != shownTab) {
+            reveal.snapTo(0f)
+            prevTab = shownTab
+            shownTab = tab
+            reveal.animateTo(1f, tween(1000, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)))
+            prevTab = -1
+        }
+    }
+    val uiDensity = LocalDensity.current
+    // the circle is born at the centre of the tab bar (a bit above the bottom edge + navigation bar)
+    val bottomPx = androidx.compose.foundation.layout.WindowInsets.navigationBars.getBottom(uiDensity) +
+        with(uiDensity) { 46.dp.toPx() }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
     val toGif = remember { VideoToGifState() }
@@ -298,22 +318,8 @@ fun EcoGifApp() {
 
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize()) {
-                    AnimatedContent(
-                        targetState = tab,
-                        transitionSpec = {
-                            // the new page grows out of ITS OWN tab in the bottom bar,
-                            // the old one shrinks back toward its tab
-                            (scaleIn(tween(560, easing = FastOutSlowInEasing), initialScale = 0.08f, transformOrigin = tabOrigin(targetState)) +
-                                fadeIn(tween(320)) +
-                                slideInVertically(tween(560, easing = FastOutSlowInEasing)) { it / 12 })
-                                .togetherWith(
-                                    scaleOut(tween(300, easing = FastOutSlowInEasing), targetScale = 0.6f, transformOrigin = tabOrigin(initialState)) +
-                                        fadeOut(tween(200))
-                                )
-                                .apply { targetContentZIndex = 1f }
-                        },
-                        label = "tabs"
-                    ) { t ->
+                    // page transition: the new page blooms as a circle from its own tab
+                    val pageContent: @Composable (Int) -> Unit = { t ->
                         val header: @Composable () -> Unit = { Header(t, palette, colors) }
                         // the page and its progress card are one thing: they slide together
                         Box(Modifier.fillMaxSize()) {
@@ -351,6 +357,16 @@ fun EcoGifApp() {
                             }
                         }
                     }
+                    RevealPages(
+                        shown = shownTab,
+                        prev = prevTab,
+                        reveal = reveal,
+                        originX = tabOrigin(shownTab).pivotFractionX,
+                        bottomPx = bottomPx,
+                        accent = palette.accent,
+                        accent2 = palette.accent2,
+                        content = pageContent
+                    )
                 }
             }
             }
