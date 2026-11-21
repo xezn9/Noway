@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "EcoGif"
+rootProject.name = "LiquidTabsApp"
 include(":app")

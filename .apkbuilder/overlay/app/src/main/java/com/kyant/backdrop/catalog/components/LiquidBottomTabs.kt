@@ -1,7 +1,5 @@
 package com.kyant.backdrop.catalog.components
 
-import com.kyant.backdrop.catalog.utils.LocalGlassLevels
-import com.kyant.backdrop.catalog.utils.scaleAlpha
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
@@ -79,7 +77,6 @@ fun LiquidBottomTabs(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable RowScope.() -> Unit
 ) {
-    val glass = LocalGlassLevels.current
     val isLightTheme = !darkTheme
     val accentColor =
         if (isLightTheme) Color(0xFF0088FF)
@@ -182,8 +179,8 @@ fun LiquidBottomTabs(
                     shape = { Capsule() },
                     effects = {
                         vibrancy()
-                        blur((8f.dp.toPx()) * glass.blurK)
-                        lens((24f.dp.toPx()) * glass.lensK, (24f.dp.toPx()) * glass.lensK)
+                        blur(8f.dp.toPx())
+                        lens(24f.dp.toPx(), 24f.dp.toPx())
                     },
                     layerBlock = {
                         val progress = dampedDragAnimation.pressProgress
@@ -191,7 +188,7 @@ fun LiquidBottomTabs(
                         scaleX = scale
                         scaleY = scale
                     },
-                    onDrawSurface = { drawRect(containerColor.scaleAlpha(glass.opacityK)) }
+                    onDrawSurface = { drawRect(containerColor) }
                 )
                 .then(interactiveHighlight.modifier)
                 .height(64f.dp)
@@ -220,16 +217,17 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            blur((8f.dp.toPx()) * glass.blurK)
+                            blur(8f.dp.toPx())
                             lens(
-                                (24f.dp.toPx() * progress) * glass.lensK,
-                                (24f.dp.toPx() * progress) * glass.lensK)
+                                24f.dp.toPx() * progress,
+                                24f.dp.toPx() * progress
+                            )
                         },
                         highlight = {
                             val progress = dampedDragAnimation.pressProgress
                             Highlight.Default.copy(alpha = progress)
                         },
-                        onDrawSurface = { drawRect(containerColor.scaleAlpha(glass.opacityK)) }
+                        onDrawSurface = { drawRect(containerColor) }
                     )
                     .then(interactiveHighlight.modifier)
                     .height(56f.dp)

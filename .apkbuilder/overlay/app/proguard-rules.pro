@@ -1,1 +1,0 @@
-# EcoGif - nothing special needed

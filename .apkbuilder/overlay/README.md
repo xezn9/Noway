@@ -1,16 +1,18 @@
-# EcoGif
+# Liquid Tabs
 
-Android app (Jetpack Compose) with Liquid Glass UI built on `io.github.kyant0:backdrop:2.0.0`.
+شريط سفلي زجاجي (LiquidBottomTabs) فوق مكتبة backdrop 2.0.0، مع انتقالات HyperSpring المستخرجة.
 
-Features
-- Resize GIF (width/height, scale %, keep aspect ratio, Eco mode = half the frames)
-  - live preview: every size/scale change is applied to the preview GIF immediately
-  - crop box: drag any side / corner (or the inside) to cut the GIF, then resize the cropped area
-- Video -> GIF (start, length, fps, width)
-- GIF -> Video (MP4 / H.264, scale, repeat count)
+## الملفات
+- `app/src/main/java/com/kyant/backdrop/catalog/**` : ملفات الشريط كما أرسلتها (بدون تعديل).
+- `TabReveal.kt` : انتقال التبويبات (موجة زجاجية) — منقول من TabReveal.java بنفس الشيدرات الأصلية والأرقام.
+- `PushMorph.kt` : فتح صفحة فرعية — منقول من PushMorph.java.
+- `SplitTitle.kt`, `Motion.kt` : العنوان الذي يدخل حرفاً حرفاً + الدخول المتتالي للعناصر (Motion.cascade).
+- `Screens.kt` : 3 تبويبات (Home / Explore / Profile) فيها عناصر كثيرة، وصفوف تفتح صفحة فرعية.
 
-Open the `EcoGif` folder in Android Studio (Narwhal or newer, JDK 21), let Gradle sync, run.
-Results are saved to Pictures/EcoGif and Movies/EcoGif (no storage permission needed, Android 10+).
+## التشغيل
+- Android Studio: افتح المجلد → Sync → Run.
+- أو ارفع المجلد إلى GitHub: ملف `.github/workflows/build.yml` يبني APK ويرفعه في Actions → Artifacts.
 
-Liquid components used (unchanged, from your zips): LiquidBottomTabs, LiquidButton, LiquidSlider,
-LiquidToggle, LiquidDialog -> app/src/main/java/com/kyant/backdrop/catalog/
+## ملاحظات
+- موجة الزجاج الكاملة تحتاج أندرويد 13+، والتمويه أندرويد 12+. قبل ذلك تظهر الدائرة والحلقة فقط.
+- README الأصلي للشريط يذكر backdrop 2.0.1؛ هنا 2.0.0 كما طلبت. إن ظهر خطأ API غيّر الرقم في app/build.gradle.kts.

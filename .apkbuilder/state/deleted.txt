@@ -1,5 +1,5 @@
-.gitignore
 LICENSE
+app/proguard-rules.pro
 app/src/main/java/com/mfp/filemanager/FileManagerApplication.kt
 app/src/main/java/com/mfp/filemanager/MainActivity.kt
 app/src/main/java/com/mfp/filemanager/OnboardingActivity.kt
@@ -191,7 +191,9 @@ app/src/main/res/menu/menu_trash_selection.xml
 app/src/main/res/mipmap-xxhdpi/ic_launcher.png
 app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
 app/src/main/res/navigation/nav_graph.xml
+app/src/main/res/values/colors.xml
 app/src/main/res/values/colors_adaptive.xml
+app/src/main/res/values/themes.xml
 app/src/main/res/values-night/colors.xml
 app/src/main/res/values-night/colors_adaptive.xml
 app/src/main/res/xml/backup_rules.xml
