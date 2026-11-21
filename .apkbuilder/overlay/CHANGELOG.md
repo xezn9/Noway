@@ -1,19 +1,5 @@
 # Changelog
 
-## 3.1.0 (sin publicar)
-
-- **Gradle:** `compileSdk` 36 y AGP 8.9.1, que piden las versiones actuales de Compose.
-
-- **Barra de abajo de la app de ajustes:** ahora es el `LiquidBottomTabs` de Kyant0 (biblioteca
-  `backdrop`). Funciona igual (cuatro pestañas, arrastrar la píldora, onda al cambiar de pestaña),
-  solo cambia el aspecto. `LiquidTabBar.kt` mantiene los mismos métodos que tenía `GlassBar`.
-- **Interruptores y deslizadores:** todos los de la app son ahora `LiquidToggle` y `LiquidSlider`
-  (`LiquidToggleView.kt`, `LiquidSliderView.kt`). Los viejos `Controls.Toggle`/`Controls.Slider`
-  ya no se usan.
-- **Compilación:** la app lleva Kotlin y Compose, así que se compila con Gradle
-  (`./gradlew assembleRelease`). `local-build/build.sh` ya no compila la app completa.
-- Pierde: la barra ya no se encoge al bajar por una página, y el gesto del icono al elegir su pestaña.
-
 ## 3.0.2
 
 **Fixed**
