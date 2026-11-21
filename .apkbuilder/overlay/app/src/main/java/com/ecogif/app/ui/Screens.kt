@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -182,14 +181,20 @@ fun ResizeScreen(
                 onPick = onPick,
                 backdrop = backdrop,
                 colors = colors,
-                preview = { state.uri?.let { ResizePreview(state, it) } },
+                preview = {
+                    state.uri?.let {
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
+                        ) { ResizePreview(state, it) }
+                    }
+                },
                 details = if (info == null) "" else buildString {
                     append("${info.width} × ${info.height}")
-                    if (state.isCropped) append("  →  crop ${state.cropW} × ${state.cropH}")
+                    if (state.isCropped) append("  →  ${tr("crop")} ${state.cropW} × ${state.cropH}")
                     val ow = state.outW
                     val oh = state.outH
                     if (ow != null && oh != null && (ow != info.width || oh != info.height)) append("  →  $ow × $oh")
-                    append(" px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}")
+                    append(" ${tr("px")}  ·  ${info.frameCount} ${tr("frames")}  ·  ${MediaSaver.formatSize(state.sizeBytes)}")
                 },
                 extra = {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -297,7 +302,7 @@ fun ResizeScreen(
             val valid = state.outW != null && state.outH != null
             Staggered(4) {
                 RunButton(
-                    text = if (valid) "Resize & Save  (${state.outW} × ${state.outH})" else "Enter a valid size",
+                    text = if (valid) "${tr("Resize & Save")}  (${state.outW} × ${state.outH})" else tr("Enter a valid size"),
                     enabled = valid && !task.busy,
                     onClick = onRun,
                     backdrop = backdrop
@@ -333,7 +338,7 @@ fun VideoToGifScreen(
                 colors = colors,
                 preview = { state.thumb?.let { BitmapPreview(it) } },
                 details = if (info == null) "" else
-                    "${info.width} × ${info.height} px  ·  ${formatTime(info.durationMs / 1000f)}  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
+                    "${info.width} × ${info.height} ${tr("px")}  ·  ${formatTime(info.durationMs / 1000f)}  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
             )
         }
 
@@ -358,7 +363,7 @@ fun VideoToGifScreen(
                         TimelineBar(state.startSec, state.effectiveLengthSec, state.durationSec, colors)
                         SliderRow(
                             title = "Start",
-                            valueText = "${"%.1f".format(state.startSec)} s",
+                            valueText = "${"%.1f".format(state.startSec)} ${tr("s")}",
                             value = state.startSec,
                             onValueChange = { state.startSec = (it * 10).roundToInt() / 10f },
                             range = 0f..maxOf(0.5f, state.durationSec - 0.5f),
@@ -367,7 +372,7 @@ fun VideoToGifScreen(
                         )
                         SliderRow(
                             title = "Length",
-                            valueText = "${"%.1f".format(state.effectiveLengthSec)} s",
+                            valueText = "${"%.1f".format(state.effectiveLengthSec)} ${tr("s")}",
                             value = state.lengthSec,
                             onValueChange = { state.lengthSec = (it * 10).roundToInt() / 10f },
                             range = 0.5f..15f,
@@ -382,7 +387,7 @@ fun VideoToGifScreen(
                         CardTitle("Quality", colors)
                         SliderRow(
                             title = "Frames per second",
-                            valueText = "${state.fps.roundToInt()} fps",
+                            valueText = "${state.fps.roundToInt()} ${tr("fps")}",
                             value = state.fps,
                             onValueChange = { state.fps = it.roundToInt().toFloat() },
                             range = 5f..60f,
@@ -391,7 +396,8 @@ fun VideoToGifScreen(
                         )
                         if (state.fps.roundToInt() > VideoToGif.MAX_REAL_FPS) {
                             Text(
-                                "GIF plays at ${VideoToGif.MAX_REAL_FPS} fps at most",
+                                if (I18n.arabic) "يعرض الـ GIF بحد أقصى ${VideoToGif.MAX_REAL_FPS} إطار/ث"
+                                else "GIF plays at ${VideoToGif.MAX_REAL_FPS} fps at most",
                                 color = colors.secondary,
                                 fontSize = 12.sp
                             )
@@ -399,7 +405,7 @@ fun VideoToGifScreen(
                         val lo = minOf(120, state.maxWidth - 1).toFloat()
                         SliderRow(
                             title = "Width",
-                            valueText = "${state.width.roundToInt()} px",
+                            valueText = "${state.width.roundToInt()} ${tr("px")}",
                             value = state.width,
                             onValueChange = { state.width = it.roundToInt().toFloat() },
                             range = lo..state.maxWidth.toFloat(),
@@ -456,7 +462,7 @@ fun GifToVideoScreen(
                 colors = colors,
                 preview = { state.uri?.let { GifPreview(it) } },
                 details = if (info == null) "" else
-                    "${info.width} × ${info.height} px  ·  ${info.frameCount} frames  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
+                    "${info.width} × ${info.height} ${tr("px")}  ·  ${info.frameCount} ${tr("frames")}  ·  ${MediaSaver.formatSize(state.sizeBytes)}"
             )
         }
 
@@ -477,7 +483,8 @@ fun GifToVideoScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "about ${formatTime(seconds)} long  ·  ${loops}× repeat  ·  $percent% size",
+                        if (I18n.arabic) "${tr("about")} ${formatTime(seconds)}  ·  ${loops}× ${tr("repeat")}  ·  $percent% ${tr("size")}"
+                        else "about ${formatTime(seconds)} long  ·  ${loops}× repeat  ·  $percent% size",
                         color = colors.secondary,
                         fontSize = 14.sp
                     )
@@ -573,6 +580,41 @@ fun SettingsScreen(
     ScreenColumn(header) {
         Staggered(0) {
             GlassCard(backdrop, colors) {
+                CardTitle("Language", colors)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(true to "العربية", false to "English").forEach { (ar, label) ->
+                        val on = settings.arabic == ar
+                        LiquidButton(
+                            onClick = { settings.setArabic(ar) },
+                            backdrop = backdrop,
+                            modifier = Modifier.weight(1f),
+                            tint = if (on) LocalAccent.current else Color.Unspecified,
+                            surfaceColor = if (on) Color.Unspecified
+                            else if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
+                        ) {
+                            Text(
+                                label,
+                                color = if (on) Color.White else colors.content,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+                ToggleRow(
+                    title = "Splash screen",
+                    subtitle = "Show the animated splash when the app opens",
+                    checked = settings.showSplash,
+                    onChange = { settings.setShowSplash(it) },
+                    backdrop = backdrop,
+                    colors = colors
+                )
+            }
+        }
+
+        Staggered(1) {
+            GlassCard(backdrop, colors) {
                 CardTitle("Page colors", colors)
                 Text(
                     "Choose a page, then a colour. This page shows a live preview of it.",
@@ -603,14 +645,14 @@ fun SettingsScreen(
                 val page = settings.editTab
                 SwatchGrid(settings.colorIndex(page)) { settings.setColor(page, it) }
                 Text(
-                    "${pageNames[page]}: ${Swatches[settings.colorIndex(page)].name}",
+                    "${tr(pageNames[page])}: ${tr(Swatches[settings.colorIndex(page)].name)}",
                     color = colors.secondary,
                     fontSize = 13.sp
                 )
             }
         }
 
-        Staggered(1) {
+        Staggered(2) {
             GlassCard(backdrop, colors) {
                 CardTitle("Liquid glass", colors)
                 Text(

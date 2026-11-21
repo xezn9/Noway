@@ -36,7 +36,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -86,7 +85,7 @@ private fun share(context: Context, uri: Uri, mime: String) {
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    context.startActivity(Intent.createChooser(send, tr("Share")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 @Composable
@@ -106,7 +105,8 @@ fun EcoGifApp() {
     val settings = remember { AppSettings(context) }
     val palette = animatedPalette(paletteFor(settings.pageColor(tab), dark))
     val shift by animateFloatAsState(tab.toFloat(), spring(stiffness = 35f), label = "wallpaperShift")
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val rtl = settings.arabic
+    var splashDone by remember { mutableStateOf(!settings.showSplash) }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
     val toGif = remember { VideoToGifState() }
@@ -116,12 +116,12 @@ fun EcoGifApp() {
     var dialogVisible by remember { mutableStateOf(false) }
 
     fun showDialog(d: DialogData) {
-        dialog = d
+        dialog = DialogData(tr(d.title), d.message, tr(d.confirmText), tr(d.dismissText), d.confirmTint, d.onConfirm)
         dialogVisible = true
     }
 
     fun showError(message: String) = showDialog(
-        DialogData("Something went wrong", message, "OK", "Close", Color(0xFFFF3B30), null)
+        DialogData("Something went wrong", tr(message), "OK", "Close", Color(0xFFFF3B30), null)
     )
 
     // ------------------------------------------------------------ loading inputs
@@ -195,13 +195,13 @@ fun EcoGifApp() {
                 }
                 val outSize = MediaSaver.sizeOf(context, done.uri)
                 val message = buildString {
-                    append("Saved to ${done.displayPath}\n")
+                    append("${tr("Saved to")} ${done.displayPath}\n")
                     if (inputSize > 0) {
                         val diff = ((outSize - inputSize) * 100.0 / inputSize).roundToInt()
                         append("${MediaSaver.formatSize(inputSize)} → ${MediaSaver.formatSize(outSize)}")
                         append("  (${if (diff > 0) "+" else ""}$diff%)")
                     } else {
-                        append("Size: ${MediaSaver.formatSize(outSize)}")
+                        append("${tr("Size")}: ${MediaSaver.formatSize(outSize)}")
                     }
                 }
                 showDialog(
@@ -274,7 +274,8 @@ fun EcoGifApp() {
 
     CompositionLocalProvider(
         LocalAccent provides palette.accent,
-        com.kyant.backdrop.catalog.utils.LocalGlassLevels provides settings.glass
+        com.kyant.backdrop.catalog.utils.LocalGlassLevels provides settings.glass,
+        LocalLayoutDirection provides (if (settings.arabic) LayoutDirection.Rtl else LayoutDirection.Ltr)
     ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(screenBackdrop)) {
@@ -376,6 +377,8 @@ fun EcoGifApp() {
                 dialog.onConfirm?.invoke()
             }
         )
+
+        if (!splashDone) SplashScreen(onFinished = { splashDone = true })
     }
     }
 }
@@ -385,7 +388,7 @@ private val tabSubtitles = listOf(
     "Change a GIF's size or cut it with the crop box",
     "Turn a clip of a video into a GIF",
     "Save a GIF as an MP4 video",
-    "Page colours and liquid glass"
+    "Language, splash, page colours and liquid glass"
 )
 
 @Composable

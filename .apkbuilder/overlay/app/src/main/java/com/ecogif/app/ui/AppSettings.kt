@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.kyant.backdrop.catalog.utils.GlassLevels
@@ -24,6 +25,31 @@ class AppSettings(context: Context) {
         prefs.getInt("color_1", 1).coerceIn(0, Swatches.lastIndex),
         prefs.getInt("color_2", 2).coerceIn(0, Swatches.lastIndex)
     )
+
+    /** App language: true = Arabic (RTL), false = English. Defaults to the phone's language. */
+    var arabic by mutableStateOf(
+        prefs.getBoolean("lang_ar", java.util.Locale.getDefault().language == "ar")
+    )
+        private set
+
+    /** Show the animated splash when the app opens. */
+    var showSplash by mutableStateOf(prefs.getBoolean("show_splash", true))
+        private set
+
+    init {
+        I18n.arabic = arabic
+    }
+
+    fun setArabic(v: Boolean) {
+        arabic = v
+        I18n.arabic = v
+        prefs.edit().putBoolean("lang_ar", v).apply()
+    }
+
+    fun setShowSplash(v: Boolean) {
+        showSplash = v
+        prefs.edit().putBoolean("show_splash", v).apply()
+    }
 
     /** Which page the colour picker is editing (the Settings page previews that page's colour). */
     var editTab by mutableIntStateOf(0)
