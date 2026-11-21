@@ -78,8 +78,9 @@ fun LiquidBottomTabs(
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !darkTheme
-    // follows "App color" in Settings (reads state, so it updates live)
-    val accentColor = com.mfp.filemanager.ui.theme.GlassConfig.accent
+    val accentColor =
+        if (isLightTheme) Color(0xFF0088FF)
+        else Color(0xFF0091FF)
     val containerColor =
         if (isLightTheme) Color(0xFFFAFAFA).copy(0.4f)
         else Color(0xFF121212).copy(0.4f)
@@ -178,11 +179,8 @@ fun LiquidBottomTabs(
                     shape = { Capsule() },
                     effects = {
                         vibrancy()
-                        val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(8f)
-                        if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
-                        val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
-                        val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
-                        if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
+                        blur(8f.dp.toPx())
+                        lens(24f.dp.toPx(), 24f.dp.toPx())
                     },
                     layerBlock = {
                         val progress = dampedDragAnimation.pressProgress
@@ -190,7 +188,7 @@ fun LiquidBottomTabs(
                         scaleX = scale
                         scaleY = scale
                     },
-                    onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(containerColor)) }
+                    onDrawSurface = { drawRect(containerColor) }
                 )
                 .then(interactiveHighlight.modifier)
                 .height(64f.dp)
@@ -219,16 +217,17 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(8f)
-                            if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
-                            val glassLens = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f) * progress
-                            if (glassLens > 0.01f) lens(glassLens.dp.toPx(), glassLens.dp.toPx())
+                            blur(8f.dp.toPx())
+                            lens(
+                                24f.dp.toPx() * progress,
+                                24f.dp.toPx() * progress
+                            )
                         },
                         highlight = {
                             val progress = dampedDragAnimation.pressProgress
                             Highlight.Default.copy(alpha = progress)
                         },
-                        onDrawSurface = { drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(containerColor)) }
+                        onDrawSurface = { drawRect(containerColor) }
                     )
                     .then(interactiveHighlight.modifier)
                     .height(56f.dp)
@@ -255,15 +254,11 @@ fun LiquidBottomTabs(
                     shape = { Capsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
-                        val thumbH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(10f) * progress
-                        val thumbA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(14f) * progress
-                        if (thumbH > 0.01f && thumbA > 0.01f) {
-                            lens(
-                                thumbH.dp.toPx(),
-                                thumbA.dp.toPx(),
-                                chromaticAberration = true
-                            )
-                        }
+                        lens(
+                            10f.dp.toPx() * progress,
+                            14f.dp.toPx() * progress,
+                            chromaticAberration = true
+                        )
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress

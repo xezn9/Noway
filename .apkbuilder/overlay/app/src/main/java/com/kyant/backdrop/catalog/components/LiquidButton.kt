@@ -56,11 +56,8 @@ fun LiquidButton(
                 shape = { Capsule() },
                 effects = {
                     vibrancy()
-                    val glassBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(2f)
-                    if (glassBlur > 0.01f) blur(glassBlur.dp.toPx())
-                    val glassLensH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(12f)
-                    val glassLensA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(24f)
-                    if (glassLensH > 0.01f && glassLensA > 0.01f) lens(glassLensH.dp.toPx(), glassLensA.dp.toPx())
+                    blur(2f.dp.toPx())
+                    lens(12f.dp.toPx(), 24f.dp.toPx())
                 },
                 layerBlock = if (isInteractive) {
                     {
@@ -96,7 +93,7 @@ fun LiquidButton(
                         drawRect(tint.copy(alpha = 0.75f))
                     }
                     if (surfaceColor.isSpecified) {
-                        drawRect(com.mfp.filemanager.ui.theme.GlassConfig.surface(surfaceColor))
+                        drawRect(surfaceColor)
                     }
                 }
             )

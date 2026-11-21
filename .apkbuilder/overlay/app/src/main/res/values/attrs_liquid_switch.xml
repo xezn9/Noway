@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <declare-styleable name="LiquidSwitchView">
-        <!-- true when the row sits on a card (surface colour) instead of directly on the page -->
-        <attr name="onCard" format="boolean" />
-    </declare-styleable>
-</resources>

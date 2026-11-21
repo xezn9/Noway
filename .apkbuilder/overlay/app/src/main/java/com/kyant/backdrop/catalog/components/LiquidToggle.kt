@@ -65,8 +65,9 @@ fun LiquidToggle(
     dark: Boolean = isSystemInDarkTheme()
 ) {
     val isLightTheme = !dark
-    // "on" colour follows "App color" in Settings
-    val accentColor = com.mfp.filemanager.ui.theme.GlassConfig.accent
+    val accentColor =
+        if (isLightTheme) Color(0xFF34C759)
+        else Color(0xFF30D158)
     val trackColor =
         if (isLightTheme) Color(0xFF787878).copy(0.2f)
         else Color(0xFF787880).copy(0.36f)
@@ -188,17 +189,12 @@ fun LiquidToggle(
                     shape = { Capsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
-                        val toggleBlur = com.mfp.filemanager.ui.theme.GlassConfig.blurDp(8f) * (1f - progress)
-                        if (toggleBlur > 0.01f) blur(toggleBlur.dp.toPx())
-                        val toggleH = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(5f) * progress
-                        val toggleA = com.mfp.filemanager.ui.theme.GlassConfig.lensDp(10f) * progress
-                        if (toggleH > 0.01f && toggleA > 0.01f) {
-                            lens(
-                                toggleH.dp.toPx(),
-                                toggleA.dp.toPx(),
-                                chromaticAberration = true
-                            )
-                        }
+                        blur(8f.dp.toPx() * (1f - progress))
+                        lens(
+                            5f.dp.toPx() * progress,
+                            10f.dp.toPx() * progress,
+                            chromaticAberration = true
+                        )
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress

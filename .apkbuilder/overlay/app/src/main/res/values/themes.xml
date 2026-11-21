@@ -1,80 +1,8 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.FileManager" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <item name="colorPrimary">@color/default_accent</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_700</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
-        <!-- Customize your theme here. -->
-        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
-        <item name="android:windowAnimationStyle">@style/Theme.FileManager.Animation</item>
-    </style>
-
-    <style name="Theme.FileManager.Animation" parent="@android:style/Animation.Activity">
-        <item name="android:activityOpenEnterAnimation">@android:anim/fade_in</item>
-        <item name="android:activityOpenExitAnimation">@android:anim/fade_out</item>
-        <item name="android:activityCloseEnterAnimation">@android:anim/fade_in</item>
-        <item name="android:activityCloseExitAnimation">@android:anim/fade_out</item>
-    </style>
-
-    <style name="Theme.FileManager.Dark" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
-        <item name="android:statusBarColor">@color/dark_background</item>
-        <item name="android:windowBackground">@color/dark_background</item>
-        <item name="android:colorBackground">@color/dark_background</item>
-        <item name="colorSurface">@color/surface_dark</item>
-        <item name="colorSurfaceVariant">@color/surface_dark</item>
-        <item name="colorOnSurface">@color/white</item>
-        <item name="colorOnSurfaceVariant">@color/text_white</item>
-        <item name="colorSurfaceContainer" tools:targetApi="33">#1E1E1E</item>
-        <item name="colorSurfaceContainerLow" tools:targetApi="33">#181818</item>
-        <item name="colorSurfaceContainerHigh" tools:targetApi="33">#252525</item>
-        <item name="colorSurfaceContainerHighest" tools:targetApi="33">#2C2C2C</item>
-    </style>
-    
-    <style name="Theme.FileManager.Amoled" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
-        <item name="android:statusBarColor">@color/black</item>
-        <item name="android:windowBackground">@color/black</item>
-        <item name="android:colorBackground">@color/black</item>
-        <item name="colorSurface">@color/black</item>
-        <item name="colorSurfaceVariant">@color/black</item>
-        <item name="colorOnSurface">@color/white</item>
-        <item name="colorOnSurfaceVariant">@color/white</item>
-        <item name="colorSurfaceContainer" tools:targetApi="33">#0D0D0D</item>
-        <item name="colorSurfaceContainerLow" tools:targetApi="33">#050505</item>
-        <item name="colorSurfaceContainerHigh" tools:targetApi="33">#151515</item>
-        <item name="colorSurfaceContainerHighest" tools:targetApi="33">#202020</item>
-    </style>
-
-    <style name="FileActionButtonStyle">
-        <item name="android:gravity">center</item>
-        <item name="android:orientation">vertical</item>
-        <item name="android:padding">8dp</item>
-        <item name="android:background">?android:attr/selectableItemBackgroundBorderless</item>
-        <item name="android:clickable">true</item>
-        <item name="android:focusable">true</item>
-    </style>
-
-    <style name="FileActionButtonIconStyle">
-        <item name="android:layout_width">46dp</item>
-        <item name="android:layout_height">46dp</item>
-        <item name="android:padding">11dp</item>
-        <item name="android:layout_marginBottom">4dp</item>
-        <item name="android:tint">@android:color/white</item>
-    </style>
-
-    <style name="FileActionButtonTextStyle">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textAppearance">?attr/textAppearanceBodySmall</item>
-        <item name="android:textColor">?android:attr/textColorSecondary</item>
-        <item name="android:textSize">10sp</item>
+<resources>
+    <style name="Theme.EcoGif" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

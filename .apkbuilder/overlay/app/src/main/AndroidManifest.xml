@@ -1,98 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.mfp.filemanager">
-
-    <!-- Permissions for File Management -->
-    <!-- Required for Android 11+ to access all files -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
-
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28"
-        tools:ignore="ScopedStorage" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
-
-    <!-- Audio Player Permissions -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Lets the app see whether Shizuku is installed (package visibility, Android 11+) -->
-    <queries>
-        <package android:name="moe.shizuku.privileged.api" />
-    </queries>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:name=".FileManagerApplication"
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.FileManager"
-        android:requestLegacyExternalStorage="true"
-        tools:targetApi="31">
-
-        <!-- Shizuku delivers its binder to the app through this provider -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.provider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_provider_paths" />
-        </provider>
+        android:theme="@style/Theme.EcoGif">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|smallestScreenSize"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.FileManager">
+            android:theme="@style/Theme.EcoGif">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".OnboardingActivity"
-            android:exported="false"
-            android:theme="@style/Theme.FileManager" />
-
-        <activity
-            android:name=".ui.activities.MediaViewerActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:theme="@style/Theme.FileManager" />
-
-        <service
-            android:name=".service.AudioPlayerService"
-            android:foregroundServiceType="mediaPlayback"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
     </application>
-
 </manifest>
