@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -39,6 +40,21 @@ private class CircleRevealShape(
     }
 }
 
+/** The opposite of [CircleRevealShape]: the whole screen EXCEPT the circle (where the old page must be hidden). */
+private class OutsideCircleShape(
+    val originX: Float,
+    val bottomPx: Float,
+    val progress: Float,
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val c = Offset(originX * size.width, size.height - bottomPx)
+        val r = maxRadius(c, size) * progress
+        val screen = Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) }
+        val hole = Path().apply { addOval(Rect(center = c, radius = r)) }
+        return Outline.Generic(Path.combine(PathOperation.Difference, screen, hole))
+    }
+}
+
 private fun maxRadius(c: Offset, size: Size): Float =
     listOf(Offset(0f, 0f), Offset(size.width, 0f), Offset(0f, size.height), Offset(size.width, size.height))
         .maxOf { (it - c).getDistance() } * 1.03f
@@ -61,17 +77,15 @@ fun RevealPages(
 ) {
     Box(Modifier.fillMaxSize()) {
         if (prev >= 0) {
-            // the old page sinks back and dims while the new one blooms over it
+            // the old page only stays visible OUTSIDE the growing circle, so it never shows through the new page
             Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = reveal.value
-                        val s = 1f - 0.08f * p
-                        scaleX = s
-                        scaleY = s
-                        alpha = 1f - 0.6f * p
-                        transformOrigin = TransformOrigin(originX, 1f - bottomPx / size.height)
+                        clip = true
+                        shape = OutsideCircleShape(originX, bottomPx, p)
+                        alpha = 1f - 0.5f * p
                     }
             ) { content(prev) }
         }
@@ -84,10 +98,6 @@ fun RevealPages(
                         val p = reveal.value
                         clip = true
                         shape = CircleRevealShape(originX, bottomPx, p)
-                        val s = 0.94f + 0.06f * p
-                        scaleX = s
-                        scaleY = s
-                        transformOrigin = TransformOrigin(originX, 1f - bottomPx / size.height)
                     }
                 }
         ) { content(shown) }
