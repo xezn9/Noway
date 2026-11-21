@@ -17,10 +17,50 @@ android {
 
     buildTypes {
         release {
-            // Sin ofuscar: LSPosed necesita encontrar MainHook por nombre.
-            isMinifyEnabled = false
+            // R8: reduce el código (quita lo que no se usa, funde y acorta), ofusca los nombres y
+            // quita los recursos sin usar. Los nombres que LSPosed necesita encontrar (ModernEntry,
+            // LegacyEntry) se conservan en proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+
+    // La app solo tiene textos en español e inglés: fuera los idiomas que traen las bibliotecas.
+    androidResources {
+        localeFilters += listOf("en", "es")
+    }
+
+    // Archivos de las bibliotecas que no hacen falta en el móvil (no tocar META-INF/xposed).
+    packaging {
+        resources {
+            excludes += setOf(
+                "/DebugProbesKt.bin",
+                "/kotlin-tooling-metadata.json",
+                "/META-INF/*.version",
+                "/META-INF/*.kotlin_module",
+                "/META-INF/com/android/build/gradle/**",
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/versions/**",
+                "/kotlin/**",
+                "/**/*.kotlin_builtins",
+                "/**/*.kotlin_metadata"
+            )
+        }
+    }
+
+    // Quita del APK la lista de dependencias que Google Play lee (no se sube a Play).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     compileOptions {
