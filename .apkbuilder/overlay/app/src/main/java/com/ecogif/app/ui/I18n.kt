@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
@@ -112,7 +114,8 @@ fun Text(
         fontSize = fontSize,
         fontWeight = fontWeight,
         letterSpacing = letterSpacing,
-        textAlign = textAlign,
+        textAlign = textAlign
+            ?: if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else null,
         lineHeight = lineHeight,
         overflow = overflow,
         softWrap = softWrap,

@@ -169,7 +169,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 }
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
+                    androidx.compose.material3.Text(
                         "EcoGif",
                         color = Color.White,
                         fontSize = 38.sp,
@@ -178,7 +178,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(
+                    androidx.compose.material3.Text(
                         "Smaller GIFs, made simple",
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 15.sp,

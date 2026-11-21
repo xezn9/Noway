@@ -105,7 +105,7 @@ fun EcoGifApp() {
     val settings = remember { AppSettings(context) }
     val palette = animatedPalette(paletteFor(settings.pageColor(tab), dark))
     val shift by animateFloatAsState(tab.toFloat(), spring(stiffness = 35f), label = "wallpaperShift")
-    val rtl = settings.arabic
+    val rtl = true // layout is always right-to-left; only the texts change with the language
     var splashDone by remember { mutableStateOf(!settings.showSplash) }
     val task = remember { TaskState() }
     val resize = remember { ResizeState() }
@@ -275,7 +275,7 @@ fun EcoGifApp() {
     CompositionLocalProvider(
         LocalAccent provides palette.accent,
         com.kyant.backdrop.catalog.utils.LocalGlassLevels provides settings.glass,
-        LocalLayoutDirection provides (if (settings.arabic) LayoutDirection.Rtl else LayoutDirection.Ltr)
+        LocalLayoutDirection provides LayoutDirection.Rtl
     ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(screenBackdrop)) {
