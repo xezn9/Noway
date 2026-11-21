@@ -58,10 +58,10 @@ class ResizeState {
         this.info = info
         this.name = name
         this.sizeBytes = bytes.size.toLong()
-        setScale(100f)
+        applyScale(100f)
     }
 
-    fun setScale(percent: Float) {
+    fun applyScale(percent: Float) {
         val i = info ?: return
         scale = percent
         widthText = (i.width * percent / 100f).roundToInt().coerceAtLeast(1).toString()

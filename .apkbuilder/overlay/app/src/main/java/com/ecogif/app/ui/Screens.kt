@@ -127,7 +127,7 @@ fun ResizeScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     listOf(25f, 50f, 75f, 100f).forEach { p ->
                         LiquidButton(
-                            onClick = { state.setScale(p) },
+                            onClick = { state.applyScale(p) },
                             backdrop = backdrop,
                             modifier = Modifier.weight(1f),
                             surfaceColor = if (colors.dark) Color.White.copy(0.10f) else Color.White.copy(0.35f)
@@ -140,7 +140,7 @@ fun ResizeScreen(
                     title = "Scale",
                     valueText = "${state.scale.roundToInt()}%",
                     value = state.scale,
-                    onValueChange = { state.setScale(it.roundToInt().toFloat()) },
+                    onValueChange = { state.applyScale(it.roundToInt().toFloat()) },
                     range = 5f..200f,
                     backdrop = backdrop,
                     colors = colors
