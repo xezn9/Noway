@@ -19,5 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LiquidCard"
-include(":app")
+rootProject.name = "floating-tab-bar-root"
+include(":floatingTabBar")
+include(":sample:shared")
+include(":sample:androidApp")
