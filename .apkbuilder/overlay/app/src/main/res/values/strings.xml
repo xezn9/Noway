@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">انيميشن الفتح</string>
+    <string name="service_desc">يكتشف الضغط على أيقونة التطبيق في الشاشة الرئيسية ويعرض انيميشن فتح فوق الشاشة. لا يقرأ أي بيانات ولا يرسل شيئاً.</string>
+</resources>
