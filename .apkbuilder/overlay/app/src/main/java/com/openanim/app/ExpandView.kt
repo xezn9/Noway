@@ -13,15 +13,10 @@ import android.view.animation.PathInterpolator
 import androidx.core.graphics.ColorUtils
 
 /**
- * يرسم مستطيل بزوايا دائرية يتوسع من مكان الأيقونة إلى كامل الشاشة (مثل iOS 26).
+ * مستطيل بزوايا دائرية يتوسع من مكان الأيقونة إلى كامل الشاشة (مثل iOS 26).
+ * الـ View يُنشأ مسبقاً (قبل الضغط) ويُعاد استخدامه، حتى يبدأ الانيميشن فوراً.
  */
-class ExpandView(
-    context: Context,
-    private val icon: Bitmap,
-    private val iconColor: Int,
-    private val endColor: Int,
-    private val startRect: RectF
-) : View(context) {
+class ExpandView(context: Context) : View(context) {
 
     var onExpanded: (() -> Unit)? = null
 
@@ -29,18 +24,38 @@ class ExpandView(
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val rect = RectF()
     private val dst = RectF()
+    private val startRect = RectF()
+
+    private var icon: Bitmap? = null
+    private var iconColor = 0
+    private var endColor = 0
+    private var startRadius = 0f
+    private val endRadius = 42f * context.resources.displayMetrics.density
 
     private var progress = 0f
     private var alphaAll = 1f
+    private var showing = false
+
     private var expander: ValueAnimator? = null
     private var fader: ValueAnimator? = null
 
-    private val startRadius = startRect.width() * 0.225f
-    private val endRadius = 42f * context.resources.displayMetrics.density
+    fun prepare(icon: Bitmap, iconColor: Int, endColor: Int, start: RectF) {
+        cancel()
+        this.icon = icon
+        this.iconColor = iconColor
+        this.endColor = endColor
+        startRect.set(start)
+        startRadius = start.width() * 0.225f
+        progress = 0f
+        alphaAll = 1f
+        showing = true
+        invalidate()
+    }
 
-    fun expand(duration: Long) {
+    /** skipMs: نقفز للأمام بمقدار التأخير حتى نلحق الانيميشن الأصلي */
+    fun expand(duration: Long, skipMs: Long) {
         expander = ValueAnimator.ofFloat(0f, 1f).apply {
-            this.duration = duration
+            setDuration(duration)
             interpolator = PathInterpolator(0.2f, 0.9f, 0.25f, 1f)
             addUpdateListener {
                 progress = it.animatedValue as Float
@@ -52,12 +67,13 @@ class ExpandView(
                 }
             })
             start()
+            if (skipMs > 0L) setCurrentPlayTime(minOf(skipMs, duration - 1L))
         }
     }
 
     fun fadeOut(duration: Long, end: () -> Unit) {
         fader = ValueAnimator.ofFloat(1f, 0f).apply {
-            this.duration = duration
+            setDuration(duration)
             addUpdateListener {
                 alphaAll = it.animatedValue as Float
                 invalidate()
@@ -78,7 +94,19 @@ class ExpandView(
         fader?.cancel()
     }
 
+    fun reset() {
+        cancel()
+        showing = false
+        icon = null
+        progress = 0f
+        alphaAll = 1f
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
+        val bmp = icon
+        if (!showing || bmp == null) return
+
         val w = width.toFloat()
         val h = height.toFloat()
         val p = progress
@@ -90,7 +118,6 @@ class ExpandView(
             lerp(startRect.bottom, h, p)
         )
 
-        // الزوايا: من زاوية الأيقونة إلى زاوية الشاشة ثم تختفي قرب النهاية
         val corner = lerp(startRadius, endRadius, p) * (1f - smooth(0.8f, 1f, p))
 
         paint.color = ColorUtils.blendARGB(iconColor, endColor, (p * 1.8f).coerceAtMost(1f))
@@ -107,7 +134,7 @@ class ExpandView(
                 rect.centerY() + s / 2f
             )
             iconPaint.alpha = (255 * iconAlpha * alphaAll).toInt()
-            canvas.drawBitmap(icon, null, dst, iconPaint)
+            canvas.drawBitmap(bmp, null, dst, iconPaint)
         }
     }
 

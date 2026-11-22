@@ -10,8 +10,10 @@ import android.graphics.RectF
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.DisplayMetrics
+import android.os.SystemClock
+import android.util.LruCache
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -27,7 +29,15 @@ class AnimService : AccessibilityService() {
     @Volatile private var launchers: Set<String> = emptySet()
     private var lastReload = 0L
 
+    private class Cached(val bmp: Bitmap, val color: Int)
+
+    // كاش للأيقونات حتى ما نحمّلها وقت الضغط
+    private val cache: LruCache<String, Cached> = object : LruCache<String, Cached>(8 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Cached): Int = value.bmp.byteCount
+    }
+
     private var overlay: ExpandView? = null
+    private var animating = false
     private var expandDone = false
     private var appShown = false
     private var hiding = false
@@ -37,18 +47,22 @@ class AnimService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        loadLaunchers()
         reload()
+        if (Prefs.enabled(this) && launcherIsTop()) ensureOverlay()
+    }
+
+    private fun loadLaunchers() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        launchers = packageManager.queryIntentActivities(homeIntent, 0)
+            .map { it.activityInfo.packageName }
+            .toSet()
     }
 
     private fun reload() {
         lastReload = System.currentTimeMillis()
         Thread {
             val pm = packageManager
-            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            launchers = pm.queryIntentActivities(homeIntent, 0)
-                .map { it.activityInfo.packageName }
-                .toSet()
-
             val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val map = HashMap<String, String>()
             for (ri in pm.queryIntentActivities(mainIntent, 0)) {
@@ -56,7 +70,29 @@ class AnimService : AccessibilityService() {
                 if (l.isNotEmpty()) map[l] = ri.activityInfo.packageName
             }
             labels = map
+            // تحميل الأيقونات مسبقاً بالخلفية
+            for (p in map.values.toSet()) {
+                try {
+                    cached(p)
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
         }.start()
+    }
+
+    private fun cached(pkg: String): Cached? {
+        cache.get(pkg)?.let { return it }
+        val d = try {
+            packageManager.getApplicationIcon(pkg)
+        } catch (e: Exception) {
+            return null
+        }
+        val b = d.toBitmap(128, 128)
+        val avg = Bitmap.createScaledBitmap(b, 1, 1, true).getPixel(0, 0) or 0xFF000000.toInt()
+        val c = Cached(b, avg)
+        cache.put(pkg, c)
+        return c
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -75,12 +111,15 @@ class AnimService : AccessibilityService() {
         if (pkg !in launchers) return
         val src = e.source ?: return
 
+        // التأخير بين الضغطة ووصول الحدث، نعوّضه حتى نلحق الانيميشن الأصلي
+        val lag = (SystemClock.uptimeMillis() - e.eventTime).coerceIn(0L, 250L)
+
         val hit = resolve(src)
         if (hit == null) {
             if (System.currentTimeMillis() - lastReload > 15000) reload()
             return
         }
-        startAnimation(hit.first, hit.second)
+        startAnimation(hit.first, hit.second, lag)
     }
 
     private fun resolve(src: AccessibilityNodeInfo): Pair<String, Rect>? {
@@ -131,16 +170,66 @@ class AnimService : AccessibilityService() {
         return best
     }
 
+    // ---------- نافذة الـ overlay (تُجهَّز مسبقاً) ----------
+
+    private fun ensureOverlay(): ExpandView? {
+        overlay?.let { return it }
+        val v = ExpandView(this)
+        v.visibility = View.INVISIBLE
+
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT
+        )
+        lp.gravity = Gravity.TOP or Gravity.START
+        if (Build.VERSION.SDK_INT >= 28) {
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        return try {
+            wm.addView(v, lp)
+            overlay = v
+            v
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun removeOverlayNow() {
+        handler.removeCallbacks(hideRunnable)
+        val v = overlay
+        if (v != null) {
+            v.cancel()
+            try {
+                wm.removeViewImmediate(v)
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        overlay = null
+        animating = false
+        hiding = false
+    }
+
+    private fun launcherIsTop(): Boolean = try {
+        val p = rootInActiveWindow?.packageName?.toString()
+        p != null && p in launchers
+    } catch (e: Exception) {
+        false
+    }
+
     // ---------- الانيميشن ----------
 
-    private fun startAnimation(pkg: String, bounds: Rect) {
-        val drawable = try {
-            packageManager.getApplicationIcon(pkg)
-        } catch (e: Exception) {
-            return
-        }
-        val bmp = drawable.toBitmap(160, 160)
-        val avg = Bitmap.createScaledBitmap(bmp, 1, 1, true).getPixel(0, 0) or 0xFF000000.toInt()
+    private fun startAnimation(pkg: String, bounds: Rect, lag: Long) {
+        val c = cached(pkg) ?: return
 
         // مستطيل الأيقونة نفسها (إذا كان العنصر يحتوي الأيقونة + الاسم نأخذ الجزء العلوي)
         val r = RectF(bounds)
@@ -162,55 +251,46 @@ class AnimService : AccessibilityService() {
                 Configuration.UI_MODE_NIGHT_YES
         val endColor = if (night) 0xFF111114.toInt() else 0xFFF4F4F8.toInt()
 
-        removeOverlayNow()
+        val v = ensureOverlay() ?: return
+
+        handler.removeCallbacks(hideRunnable)
+        animating = true
         expandDone = false
         appShown = false
         hiding = false
 
         val dur = Prefs.duration(this).toLong()
-        val v = ExpandView(this, bmp, avg, endColor, start)
+        v.prepare(c.bmp, c.color, endColor, start)
         v.onExpanded = {
             expandDone = true
             if (appShown) scheduleHide(60) else scheduleHide(500)
         }
-
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        )
-        lp.gravity = Gravity.TOP or Gravity.START
-        if (Build.VERSION.SDK_INT >= 28) {
-            lp.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
-
-        try {
-            wm.addView(v, lp)
-        } catch (e: Exception) {
-            return
-        }
-        overlay = v
-        v.post { v.expand(dur) }
+        v.visibility = View.VISIBLE
+        v.expand(dur, lag)
 
         // أمان: إذا ما صار شي نخفي بعد فترة
         scheduleHide(dur + 1800)
     }
 
-    // ---------- ظهور نافذة التطبيق ----------
+    // ---------- تغيّر النوافذ ----------
 
     private fun onWindow(e: AccessibilityEvent) {
-        if (overlay == null) return
         val pkg = e.packageName?.toString() ?: return
-        if (pkg in launchers || pkg == packageName || pkg == "com.android.systemui") return
-        appShown = true
-        if (expandDone) scheduleHide(80)
+        if (pkg == packageName || pkg == "com.android.systemui") return
+
+        if (pkg in launchers) {
+            // اللانچر صار قدام: نجهّز نافذة الـ overlay من الحين قبل الضغط
+            if (!animating && Prefs.enabled(this)) ensureOverlay()
+            return
+        }
+
+        // تطبيق ثاني صار قدام
+        if (animating) {
+            appShown = true
+            if (expandDone) scheduleHide(80)
+        } else {
+            removeOverlayNow()
+        }
     }
 
     private fun scheduleHide(delay: Long) {
@@ -220,24 +300,22 @@ class AnimService : AccessibilityService() {
 
     private fun hideOverlay() {
         val v = overlay ?: return
-        if (hiding) return
+        if (!animating || hiding) return
         hiding = true
-        v.fadeOut(180) { removeOverlayNow() }
+        v.fadeOut(180) { finishAnimation() }
     }
 
-    private fun removeOverlayNow() {
+    private fun finishAnimation() {
         handler.removeCallbacks(hideRunnable)
+        animating = false
+        hiding = false
         val v = overlay
         if (v != null) {
-            v.cancel()
-            try {
-                wm.removeViewImmediate(v)
-            } catch (e: Exception) {
-                // ignore
-            }
+            v.reset()
+            v.visibility = View.INVISIBLE
         }
-        overlay = null
-        hiding = false
+        // إذا ما رجعنا للانچر نشيل النافذة، وإلا نخليها جاهزة للضغطة الجاية
+        if (!launcherIsTop()) removeOverlayNow()
     }
 
     override fun onInterrupt() {
