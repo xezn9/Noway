@@ -19,7 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "floating-tab-bar-root"
-include(":floatingTabBar")
-include(":sample:shared")
-include(":sample:androidApp")
+rootProject.name = "LiquidBarDemo"
+include(":app")
