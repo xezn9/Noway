@@ -3,9 +3,9 @@
 
     <application
         android:allowBackup="true"
-        android:label="Liquid Bar Demo"
+        android:label="Morph Menu"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LiquidBarDemo">
+        android:theme="@style/Theme.MorphMenu">
         <activity
             android:name=".MainActivity"
             android:exported="true">

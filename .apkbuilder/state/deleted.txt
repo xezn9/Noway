@@ -1,5 +1,6 @@
 .gitignore
 LICENSE
+README.md
 README_zh.md
 app/build.gradle
 app/proguard-rules.pro
@@ -46,6 +47,7 @@ core/src/main/java/com/qmdeve/liquidglass/widget/LiquidGlassView.java
 core/src/main/res/raw/liquidglass_effect.agsl
 docs/guide/component/AndroidLiquidGlassView.md
 docs/guide/overview.md
+gradle/libs.versions.toml
 gradle/wrapper/gradle-wrapper.jar
 gradlew
 gradlew.bat
