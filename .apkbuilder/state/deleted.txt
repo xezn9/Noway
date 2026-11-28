@@ -1,9 +1,7 @@
-.gitignore
-LICENSE
-README.md
 README_zh.md
 app/build.gradle
 app/proguard-rules.pro
+app/src/main/AndroidManifest.xml
 app/src/main/java/com/qmdeve/liquidglass/demo/ElasticLiquidGlassViewActivity.java
 app/src/main/java/com/qmdeve/liquidglass/demo/LiquidGlassViewActivity.java
 app/src/main/java/com/qmdeve/liquidglass/demo/MainActivity.java
@@ -32,6 +30,7 @@ app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp
 app/src/main/res/values-zh/strings.xml
 app/src/main/res/values/colors.xml
 app/src/main/res/values/strings.xml
+app/src/main/res/values/themes.xml
 app/src/main/res/xml/backup_rules.xml
 app/src/main/res/xml/data_extraction_rules.xml
 build.gradle
@@ -47,9 +46,5 @@ core/src/main/java/com/qmdeve/liquidglass/widget/LiquidGlassView.java
 core/src/main/res/raw/liquidglass_effect.agsl
 docs/guide/component/AndroidLiquidGlassView.md
 docs/guide/overview.md
-gradle/libs.versions.toml
-gradle/wrapper/gradle-wrapper.jar
-gradlew
-gradlew.bat
 jitpack.yml
 settings.gradle
